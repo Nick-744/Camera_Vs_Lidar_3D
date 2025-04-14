@@ -7,11 +7,13 @@ import numpy as np
 (WIDTH, HEIGHT) = (1000, 800)
 COLORS = [Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.ORANGE, Color.MAGENTA, Color.YELLOWGREEN, Color.CYAN]
 
-''' Αν το ξανακοιτάξεις ποτέ...:
+''' Αν το ξανακοιτάξεις ποτέ... :
 
 Η create_octree θα μπορούσε να δέχεται λίστα αντί για cube,
 έτσι ώστε στην on_key_press να μην υπάρχει υπολογισμός από την αρχή!
-Δηλαδή, το recursion να συνεχίζει από τα δεδομένα που έχει ήδη! '''
+Δηλαδή, το recursion να συνεχίζει από τα δεδομένα που έχει ήδη!
+
+Παράλληλα, θα μπορούσε να γίνει χρήση LineSet3D για πιο γρήγορη απεικόνιση! '''
 
 class Task7_Lab5(Scene3D_):
     def __init__(self):
@@ -23,13 +25,14 @@ class Task7_Lab5(Scene3D_):
     def reset(self):
         bunny_vertices = Mesh3D("resources/bunny_low.obj").vertices # Για να τελειώσει κιόλας κάποια στιγμή
                                                                     # το πρόγραμμα (είμαι στο potato pc...)!
-        print(f"Vertices: {len(bunny_vertices)}")
+        print(f"Vertices: {len(bunny_vertices)}\n")
 
         self.pcd = PointSet3D(bunny_vertices - np.mean(bunny_vertices, axis = 0))
         self.first_aabb = find_AABB(self.pcd.points)
 
         self.octree_ls = []
         self.octree_depth = -1
+        self.my_cache = {}
 
         self.addShape(self.first_aabb, 'aabb')
         self.addShape(self.pcd, 'pcd')
@@ -56,8 +59,8 @@ class Task7_Lab5(Scene3D_):
 
     def on_key_press(self, symbol, modifiers):
         if symbol == Key.UP:
-            self.remove_octree_cubes_from_scene()
             self.octree_depth += 1
+            self.remove_octree_cubes_from_scene()
             
             self.octree_ls.clear()
             self.create_octree(
@@ -91,10 +94,16 @@ class Task7_Lab5(Scene3D_):
         if depth > self.octree_depth:
             return;
 
-        children = cut_cube_in8cubes(cube)
+        cube_key = f'{cube.x_min}_{cube.y_min}_{cube.z_min}_{cube.x_max}_{cube.y_max}_{cube.z_max}'
+        if cube_key in self.my_cache:
+            children = self.my_cache[cube_key]
+        else:
+            children = cut_cube_in8cubes(cube)
+            self.my_cache[cube_key] = children
+        
         for child in children:
-            if not points_in_cube_exist(child, pcd):
-                continue; # Άδειος κύβος!
+            if not points_in_cube_exist(child, pcd): # Άδειος κύβος!
+                continue;
             
             if depth == self.octree_depth:
                 child.color = COLORS[depth % len(COLORS)]
