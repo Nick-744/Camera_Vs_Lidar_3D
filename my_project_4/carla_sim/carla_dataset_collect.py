@@ -1,21 +1,28 @@
-import glob, os, sys, random, time
 import numpy as np
+import glob, time
 import carla
-from PIL import Image
 import cv2
+from PIL import Image
+from random import choice
+from sys import version_info, path
+from os import makedirs, name
+from os.path import join
+
+import threading             # Λειτουργηκά Συστήματα!
+sync_lock = threading.Lock() # Για την sync_buffer
 
 # === Carla paths ===
-sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
-    sys.version_info.major,
-    sys.version_info.minor,
-    'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0]
+path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
+    version_info.major,
+    version_info.minor,
+    'win-amd64' if name == 'nt' else 'linux-x86_64'))[0]
 )
 
 # === Output folders ===
 SAVE_RGB_PATH = '_out/rgb'
 SAVE_MASK_PATH = '_out/masks'
-os.makedirs(SAVE_RGB_PATH, exist_ok = True)
-os.makedirs(SAVE_MASK_PATH, exist_ok = True)
+makedirs(SAVE_RGB_PATH, exist_ok = True)
+makedirs(SAVE_MASK_PATH, exist_ok = True)
 
 # === Global States ===
 sync_buffer = {}  # key = frame_id, value = {'rgb': ..., 'mask': ...}
@@ -40,11 +47,12 @@ def save_rgb(image):
     bgr_image = array[:, :, :3]
     latest_rgb = bgr_image.copy()
 
-    if frame_id not in sync_buffer:
-        sync_buffer[frame_id] = {}
-    sync_buffer[frame_id]['rgb'] = bgr_image
+    with sync_lock:
+        if frame_id not in sync_buffer:
+            sync_buffer[frame_id] = {}
+        sync_buffer[frame_id]['rgb'] = bgr_image
 
-    check_and_save(frame_id)
+        check_and_save(frame_id)
 
     return;
 
@@ -57,24 +65,26 @@ def save_segmentation(image):
     color_mask = lane_segmentation_colormap(array)
     latest_mask = color_mask.copy()
 
-    if frame_id not in sync_buffer:
-        sync_buffer[frame_id] = {}
-    sync_buffer[frame_id]['mask'] = color_mask
+    with sync_lock:
+        if frame_id not in sync_buffer:
+            sync_buffer[frame_id] = {}
+        sync_buffer[frame_id]['mask'] = color_mask
 
-    check_and_save(frame_id)
+        check_and_save(frame_id)
 
     return;
 
 def check_and_save(frame_id):
-    if 'rgb' in sync_buffer[frame_id] and 'mask' in sync_buffer[frame_id]:
-        rgb = sync_buffer[frame_id]['rgb'][:, :, ::-1] # BGR -> RGB, αλλιώς έχουνε μπλε hue
-        mask = sync_buffer[frame_id]['mask']
+    with sync_lock:
+        if 'rgb' in sync_buffer[frame_id] and 'mask' in sync_buffer[frame_id]:
+            rgb = sync_buffer[frame_id]['rgb'][:, :, ::-1] # BGR -> RGB, αλλιώς έχουνε μπλε hue
+            mask = sync_buffer[frame_id]['mask']
 
-        Image.fromarray(rgb).save(os.path.join(SAVE_RGB_PATH, f"{frame_id:06d}.png"))
-        Image.fromarray(mask).save(os.path.join(SAVE_MASK_PATH, f"{frame_id:06d}.png"))
+            Image.fromarray(rgb).save(join(SAVE_RGB_PATH, f"{frame_id:06d}.png"))
+            Image.fromarray(mask).save(join(SAVE_MASK_PATH, f"{frame_id:06d}.png"))
 
-        print(f"Saved frame {frame_id}")
-        del sync_buffer[frame_id]
+            print(f"Saved frame {frame_id}")
+            del sync_buffer[frame_id]
     
     return;
 
@@ -94,8 +104,8 @@ def main():
     settings.fixed_delta_seconds = 0.05
     world.apply_settings(settings)
 
-    ego_bp = random.choice(blueprint_library.filter('vehicle.tesla.model3'))
-    spawn = random.choice(world.get_map().get_spawn_points())
+    ego_bp = choice(blueprint_library.filter('vehicle.tesla.model3'))
+    spawn = choice(world.get_map().get_spawn_points())
     ego = world.spawn_actor(ego_bp, spawn)
     ego.set_autopilot(True)
 
