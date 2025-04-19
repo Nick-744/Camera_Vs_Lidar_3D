@@ -1,0 +1,13 @@
+https://towardsdatascience.com/tutorial-build-a-lane-detector-679fd8953132/
+https://github.com/amusi/awesome-lane-detection/tree/master
+https://sh-tsang.medium.com/review-deeplabv3-atrous-separable-convolution-semantic-segmentation-a625f6e83b90
+https://medium.com/@r1j1nghimire/semantic-segmentation-using-deeplabv3-from-scratch-b1ff57a27be
+https://github.com/Unity-Technologies/com.unity.perception
+https://universe.roboflow.com/road-segmentation/road_segmentationv1.1
+https://carla.org/
+https://www.youtube.com/@FullSimDriving/videos
+
+
+
+
+
