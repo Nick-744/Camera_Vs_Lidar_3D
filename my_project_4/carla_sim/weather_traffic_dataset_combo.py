@@ -28,7 +28,6 @@ from carla import VehicleLightState as vls
 # ========================
 import time
 import random
-import queue
 import threading
 import math
 import numpy as np
@@ -310,8 +309,6 @@ class DataCollector:
         self.world = world
         self.last_save = time.time()
 
-        self.rgb_queue = queue.Queue()
-        self.seg_queue = queue.Queue()
         self.latest_rgb = None
         self.latest_mask = None
 
@@ -333,9 +330,11 @@ class DataCollector:
         self.rgb_cam = world.spawn_actor(cam_bp, cam_transform, attach_to=ego_vehicle)
         self.seg_cam = world.spawn_actor(seg_bp, cam_transform, attach_to=ego_vehicle)
         
-        # Register listeners
-        self.rgb_cam.listen(self.rgb_queue.put)
-        self.seg_cam.listen(self.seg_queue.put)
+        self.rgb_image = None
+        self.seg_image = None
+
+        self.rgb_cam.listen(lambda image: setattr(self, 'rgb_image', image))
+        self.seg_cam.listen(lambda image: setattr(self, 'seg_image', image))
 
         return;
 
@@ -351,31 +350,28 @@ class DataCollector:
     def save_data(self):
         now = time.time()
         if now - self.last_save >= SAVE_INTERVAL:
-            if not self.rgb_queue.empty() and not self.seg_queue.empty():
-                rgb_image = self.rgb_queue.get()
-                seg_image = self.seg_queue.get()
-                
-                if rgb_image.frame == seg_image.frame:
-                    rgb_array = np.frombuffer(rgb_image.raw_data, dtype=np.uint8)
-                    rgb_array = rgb_array.reshape((rgb_image.height, rgb_image.width, 4))[:, :, :3]
-                    self.latest_rgb = rgb_array
+            rgb = self.rgb_image
+            seg = self.seg_image
+            if (rgb is not None) and (seg is not None) and (rgb.frame == seg.frame):
+                rgb_array = np.frombuffer(rgb.raw_data, dtype = np.uint8)
+                rgb_array = rgb_array.reshape((rgb.height, rgb.width, 4))[:, :, :3]
+                self.latest_rgb = rgb_array
+                self.latest_mask = self.process_segmentation(seg)
+                frame_id = rgb.frame
 
-                    self.latest_mask = self.process_segmentation(seg_image)
-                    
-                    # Save asynchronously
-                    frame_id = rgb_image.frame
-                    threading.Thread(target=Image.fromarray(rgb_array[:, :, ::-1]).save,
-                                     args=(f"{SAVE_RGB_PATH}/{frame_id:06d}.png",), daemon=True).start()
-                    threading.Thread(target=Image.fromarray(self.latest_mask).save,
-                                     args=(f"{SAVE_MASK_PATH}/{frame_id:06d}.png",), daemon=True).start()
-                    
-                    print(f"Saved frame {rgb_image.frame}")
-                    self.last_save = now
+                # Async save
+                threading.Thread(target=Image.fromarray(rgb_array[:, :, ::-1]).save,
+                                 args=(f"{SAVE_RGB_PATH}/{frame_id:06d}.png",), daemon=True).start()
+                threading.Thread(target=Image.fromarray(self.latest_mask).save,
+                                 args=(f"{SAVE_MASK_PATH}/{frame_id:06d}.png",), daemon=True).start()
+
+                print(f"Saved frame {frame_id}")
+                self.last_save = now
         
         return;
 
     def preview(self):
-        if self.latest_rgb is not None and self.latest_mask is not None:
+        if (self.latest_rgb is not None) and (self.latest_mask is not None):
             combined = np.hstack((self.latest_rgb, self.latest_mask))
             combined = cv2.resize(combined, (720, 203))
             cv2.imshow("RGB + Segmentation", combined)
