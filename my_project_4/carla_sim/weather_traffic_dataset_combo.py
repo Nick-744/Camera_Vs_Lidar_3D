@@ -233,9 +233,9 @@ class TrafficGenerator:
 
             if bp.has_attribute('speed'):
                 if random.random() > self.percentage_pedestrians_running:
-                    walker_speeds.append(bp.get_attribute('speed').recommended_values[1])  # walk
+                    walker_speeds.append(bp.get_attribute('speed').recommended_values[1]) # walk
                 else:
-                    walker_speeds.append(bp.get_attribute('speed').recommended_values[2])  # run
+                    walker_speeds.append(bp.get_attribute('speed').recommended_values[2]) # run
             else:
                 walker_speeds.append(0.0)
 
