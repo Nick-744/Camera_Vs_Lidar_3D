@@ -1,6 +1,31 @@
+# ========================
+# Carla Configuration
+# ========================
 import glob
 import os
 import sys
+
+try:
+    carla_egg_glob = glob.glob(
+        os.path.join('..', '..', '..', 'WindowsNoEditor', 'PythonAPI', 'carla', 'dist', 
+            'carla-*%d.%d-%s.egg' % (
+                sys.version_info.major,
+                sys.version_info.minor,
+                'win-amd64' if os.name == 'nt' else 'linux-x86_64'
+                )
+            )
+    )
+    if carla_egg_glob:
+        sys.path.append(carla_egg_glob[0])
+except IndexError:
+    pass;
+
+import carla
+from carla import VehicleLightState as vls
+
+# ========================
+# Imports
+# ========================
 import time
 import random
 import queue
@@ -9,8 +34,6 @@ import math
 import numpy as np
 from PIL import Image
 import cv2
-import carla
-from carla import VehicleLightState as vls
 
 # ========================
 # Configuration
@@ -34,6 +57,8 @@ class DynamicWeather:
         self._sun = Sun(self.weather.sun_azimuth_angle, self.weather.sun_altitude_angle)
         self._storm = Storm(self.weather.precipitation)
 
+        return;
+
     def tick(self, delta_seconds):
         self._sun.tick(delta_seconds)
         self._storm.tick(delta_seconds)
@@ -45,7 +70,8 @@ class DynamicWeather:
         self.weather.wetness = self._storm.wetness
         self.weather.sun_azimuth_angle = self._sun.azimuth
         self.weather.sun_altitude_angle = self._sun.altitude
-        return self.weather
+
+        return;
 
 class Sun:
     def __init__(self, azimuth, altitude):
@@ -53,12 +79,16 @@ class Sun:
         self.altitude = altitude
         self._t = 0.0
 
+        return;
+
     def tick(self, delta_seconds):
         self._t += 0.008 * delta_seconds
         self._t %= 2.0 * math.pi
         self.azimuth += 0.25 * delta_seconds
         self.azimuth %= 360.0
         self.altitude = (70 * math.sin(self._t)) - 20
+
+        return;
 
 class Storm:
     def __init__(self, precipitation):
@@ -71,12 +101,15 @@ class Storm:
         self.wind = 0.0
         self.fog = 0.0
 
+        return;
+
     def tick(self, delta_seconds):
         delta = (1.3 if self._increasing else -1.3) * delta_seconds
         self._t = clamp(delta + self._t, -250.0, 100.0)
         self.clouds = clamp(self._t + 40.0, 0.0, 90.0)
         self.rain = clamp(self._t, 0.0, 80.0)
-        self.puddles = clamp(self._t - 10.0, 0.0, 85.0)
+        delay = -10.0 if self._increasing else 90.0
+        self.puddles = clamp(self._t + delay, 0.0, 85.0)
         self.wetness = clamp(self._t * 5, 0.0, 100.0)
         self.wind = 5.0 if self.clouds <= 20 else 90 if self.clouds >= 70 else 40
         self.fog = clamp(self._t - 10, 0.0, 30.0)
@@ -85,8 +118,10 @@ class Storm:
         if self._t == 100.0:
             self._increasing = False
 
+        return;
+
 def clamp(value, minimum=0.0, maximum=100.0):
-    return max(minimum, min(value, maximum))
+    return max(minimum, min(value, maximum));
 
 # ========================
 # Traffic Management
@@ -100,11 +135,34 @@ class TrafficGenerator:
         self.walker_actors = []
         self.all_id = []
 
+        self.percentage_pedestrians_running = 0.2
+        self.percentage_pedestrians_crossing = 0.5
+
+        return;
+
     def _get_blueprints(self, filter_pattern, generation):
-        blueprints = self.world.get_blueprint_library().filter(filter_pattern)
+        bps = self.world.get_blueprint_library().filter(filter_pattern)
+
         if generation.lower() == "all":
-            return blueprints
-        return [x for x in blueprints if int(x.get_attribute('generation')) == int(generation)]
+            return bps;
+
+        # If the filter returns only one bp, we assume that this one needed
+        # and therefore, we ignore the generation
+        if len(bps) == 1:
+            return bps;
+
+        try:
+            int_generation = int(generation)
+            # Check if generation is in available generations
+            if int_generation in [1, 2, 3]:
+                bps = [x for x in bps if int(x.get_attribute('generation')) == int_generation]
+                return bps;
+            else:
+                print("   Warning! Actor Generation is not valid. No actor will be spawned.")
+                return [];
+        except:
+            print("   Warning! Actor Generation is not valid. No actor will be spawned.")
+            return [];
 
     def configure_traffic_manager(self):
         self.traffic_manager.set_global_distance_to_leading_vehicle(2.5)
@@ -112,63 +170,137 @@ class TrafficGenerator:
         self.traffic_manager.global_percentage_speed_difference(30.0)
         if SEED is not None:
             self.traffic_manager.set_random_device_seed(SEED)
+        
+        return;
 
     def spawn_vehicles(self):
         vehicle_blueprints = self._get_blueprints('vehicle.*', 'All')
         spawn_points = self.world.get_map().get_spawn_points()
-        
+
+        if VEHICLES_NUM > len(spawn_points):
+            print(f"Warning: Requested {VEHICLES_NUM} vehicles but only {len(spawn_points)} spawn points available.")
+            num_vehicles = len(spawn_points)
+        else:
+            num_vehicles = VEHICLES_NUM
+            random.shuffle(spawn_points)
+
         batch = []
-        for transform in random.sample(spawn_points, VEHICLES_NUM):
+        hero = False  # CVC default: one hero if enabled (we skip that for now)
+
+        for n, transform in enumerate(spawn_points[:num_vehicles]):
             bp = random.choice(vehicle_blueprints)
             if bp.has_attribute('color'):
                 color = random.choice(bp.get_attribute('color').recommended_values)
                 bp.set_attribute('color', color)
-            batch.append(carla.command.SpawnActor(bp, transform)
-                         .then(carla.command.SetAutopilot(carla.command.FutureActor, True)))
+            if bp.has_attribute('driver_id'):
+                driver_id = random.choice(bp.get_attribute('driver_id').recommended_values)
+                bp.set_attribute('driver_id', driver_id)
+            bp.set_attribute('role_name', 'hero' if hero else 'autopilot')
+            hero = False  # Only one hero allowed, so disable after first
 
-        for response in self.client.apply_batch_sync(batch):
+            batch.append(carla.command.SpawnActor(bp, transform)
+                         .then(carla.command.SetAutopilot(carla.command.FutureActor, True, self.traffic_manager.get_port())))
+
+        for response in self.client.apply_batch_sync(batch, True):
             if response.error:
                 print(f"Vehicle spawn error: {response.error}")
             else:
                 self.vehicle_actors.append(response.actor_id)
 
+        return;
+
     def spawn_pedestrians(self):
         walker_blueprints = self._get_blueprints('walker.pedestrian.*', '2')
         controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
 
-        # Spawn walkers
-        spawn_points = [carla.Transform(location=self.world.get_random_location_from_navigation()) 
-                       for _ in range(WALKERS_NUM)]
-        
-        batch = [carla.command.SpawnActor(random.choice(walker_blueprints), sp) for sp in spawn_points]
-        results = self.client.apply_batch_sync(batch, True)
-        
-        walker_speeds = [1.4 + random.random()*0.5 for _ in range(len(results))]  # 1.4-1.9 m/s
-        
-        # Spawn controllers
-        controller_batch = [carla.command.SpawnActor(controller_bp, carla.Transform(), walker_id)
-                           for walker_id in [r.actor_id for r in results if not r.error]]
-        
-        # Configure controllers
-        for response in self.client.apply_batch_sync(controller_batch):
-            if response.error:
-                continue
-            self.all_id.append(response.actor_id)
-            controller = self.world.get_actor(response.actor_id)
+        if SEED is not None:
+            self.world.set_pedestrians_seed(SEED)
+            random.seed(SEED)
+
+        spawn_points = []
+        for _ in range(WALKERS_NUM):
+            loc = self.world.get_random_location_from_navigation()
+            if loc:
+                spawn_points.append(carla.Transform(location=loc))
+
+        walker_batch = []
+        walker_speeds = []
+
+        for transform in spawn_points:
+            bp = random.choice(walker_blueprints)
+            if bp.has_attribute('is_invincible'):
+                bp.set_attribute('is_invincible', 'false')
+
+            if bp.has_attribute('speed'):
+                if random.random() > self.percentage_pedestrians_running:
+                    walker_speeds.append(bp.get_attribute('speed').recommended_values[1])  # walk
+                else:
+                    walker_speeds.append(bp.get_attribute('speed').recommended_values[2])  # run
+            else:
+                walker_speeds.append(0.0)
+
+            walker_batch.append(carla.command.SpawnActor(bp, transform))
+
+        results = self.client.apply_batch_sync(walker_batch, True)
+        valid_walkers = []
+        walker_speeds2 = []
+
+        for i, res in enumerate(results):
+            if res.error:
+                print(f"Walker spawn error: {res.error}")
+            else:
+                valid_walkers.append(res.actor_id)
+                walker_speeds2.append(walker_speeds[i])
+        walker_speeds = walker_speeds2
+
+        controller_batch = [
+            carla.command.SpawnActor(controller_bp, carla.Transform(), walker_id)
+            for walker_id in valid_walkers
+        ]
+        controller_results = self.client.apply_batch_sync(controller_batch, True)
+
+        for i, res in enumerate(controller_results):
+            if res.error:
+                print(f"Controller spawn error: {res.error}")
+            else:
+                self.all_id.append(res.actor_id)
+                self.all_id.append(valid_walkers[i])
+
+        all_actors = self.world.get_actors(self.all_id)
+
+        self.world.set_pedestrians_cross_factor(self.percentage_pedestrians_crossing)
+
+        for i in range(0, len(self.all_id), 2):
+            controller = all_actors[i]
             controller.start()
             controller.go_to_location(self.world.get_random_location_from_navigation())
-            controller.set_max_speed(walker_speeds.pop(0))
+            controller.set_max_speed(float(walker_speeds[i // 2]))
 
-    def shorten_traffic_lights(self):
-        for light in self.world.get_actors().filter('traffic.traffic_light'):
-            light.set_green_time(3.0)
-            light.set_yellow_time(0.5)
-            light.set_red_time(4.0)
+        return;
+
+    def shorten_traffic_lights_durations(self):
+        traffic_lights = self.world.get_actors().filter("traffic.traffic_light")
+
+        for light in traffic_lights:
+            light.set_green_time(3.)
+            light.set_yellow_time(.5)
+            light.set_red_time(3.)
+
+        print(f"Επιτάχυνση της φωτοσήμανσης: {len(traffic_lights)} φανάρια")
+
+        return;
 
     def cleanup(self):
         print("\nDestroying traffic actors...")
+
+        for i in range(0, len(self.all_id), 2):
+            actor = self.world.get_actor(self.all_id[i])
+            if actor:
+                actor.stop()
+
         self.client.apply_batch([carla.command.DestroyActor(x) for x in self.vehicle_actors])
         self.client.apply_batch([carla.command.DestroyActor(x) for x in self.all_id])
+        return;
 
 # ========================
 # Sensor & Data Handling
@@ -273,7 +405,6 @@ def main():
     settings = world.get_settings()
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
-    settings.no_rendering_mode = True # Μπας και σωθεί τίποτα στο performance!
     world.apply_settings(settings)
 
     try:
@@ -291,12 +422,13 @@ def main():
         traffic.configure_traffic_manager()
         traffic.spawn_vehicles()
         traffic.spawn_pedestrians()
-        traffic.shorten_traffic_lights()
+        traffic.shorten_traffic_lights_durations()
 
         # Main loop
         while True:
             world.tick()
-            weather.tick(0.05)
+
+            weather.tick(settings.fixed_delta_seconds)
             world.set_weather(weather.weather)
 
             collector.save_data()
