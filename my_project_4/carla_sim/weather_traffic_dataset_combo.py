@@ -39,13 +39,12 @@ import cv2
 # ========================
 SAVE_RGB_PATH = '_out/rgb'
 SAVE_MASK_PATH = '_out/masks'
-SAVE_INTERVAL = 2.0
+SAVE_INTERVAL = 1.
 CAMERA_RESOLUTION = (1280, 720)
-TOWN_MAP = 'Town01'
 VEHICLES_NUM = 30
-WALKERS_NUM = 10
+WALKERS_NUM = 25
 TRAFFIC_MANAGER_PORT = 8000
-SEED = 42
+SEED = 23
 
 # ========================
 # Core Classes
@@ -130,6 +129,8 @@ class TrafficGenerator:
         self.client = client
         self.world = world
         self.traffic_manager = client.get_trafficmanager(TRAFFIC_MANAGER_PORT)
+        self.traffic_manager.set_hybrid_physics_mode(True)
+        self.traffic_manager.set_hybrid_physics_radius(80.0)
         self.vehicle_actors = []
         self.walker_actors = []
         self.all_id = []
@@ -166,7 +167,7 @@ class TrafficGenerator:
     def configure_traffic_manager(self):
         self.traffic_manager.set_global_distance_to_leading_vehicle(2.5)
         self.traffic_manager.set_synchronous_mode(True)
-        self.traffic_manager.global_percentage_speed_difference(30.0)
+        self.traffic_manager.global_percentage_speed_difference(10.0)
         if SEED is not None:
             self.traffic_manager.set_random_device_seed(SEED)
         
@@ -209,7 +210,7 @@ class TrafficGenerator:
         return;
 
     def spawn_pedestrians(self):
-        walker_blueprints = self._get_blueprints('walker.pedestrian.*', '2')
+        walker_blueprints = self._get_blueprints('walker.pedestrian.*', 'All')
         controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
 
         if SEED is not None:
@@ -217,7 +218,7 @@ class TrafficGenerator:
             random.seed(SEED)
 
         spawn_points = []
-        for _ in range(WALKERS_NUM):
+        while len(spawn_points) < WALKERS_NUM:
             loc = self.world.get_random_location_from_navigation()
             if loc:
                 spawn_points.append(carla.Transform(location=loc))
@@ -252,6 +253,7 @@ class TrafficGenerator:
                 walker_speeds2.append(walker_speeds[i])
         walker_speeds = walker_speeds2
 
+        # 3. spawn the walker controllers ------------------------------
         controller_batch = [
             carla.command.SpawnActor(controller_bp, carla.Transform(), walker_id)
             for walker_id in valid_walkers
@@ -267,25 +269,19 @@ class TrafficGenerator:
 
         all_actors = self.world.get_actors(self.all_id)
 
+        # >>> safety tick -------------------------------------------------
+        # make sure every new controller has at least one transform
+        self.world.tick() # use world.wait_for_tick() if you run asynchronous
+        # <<< -------------------------------------------------------------
+
         self.world.set_pedestrians_cross_factor(self.percentage_pedestrians_crossing)
 
+        # 4. start controllers and send them off --------------------------
         for i in range(0, len(self.all_id), 2):
-            controller = all_actors[i]
+            controller = all_actors[i]          # controller
             controller.start()
             controller.go_to_location(self.world.get_random_location_from_navigation())
             controller.set_max_speed(float(walker_speeds[i // 2]))
-
-        return;
-
-    def shorten_traffic_lights_durations(self):
-        traffic_lights = self.world.get_actors().filter("traffic.traffic_light")
-
-        for light in traffic_lights:
-            light.set_green_time(3.)
-            light.set_yellow_time(.5)
-            light.set_red_time(3.)
-
-        print(f"Επιτάχυνση της φωτοσήμανσης: {len(traffic_lights)} φανάρια")
 
         return;
 
@@ -319,12 +315,12 @@ class DataCollector:
         cam_bp = blueprint_library.find('sensor.camera.rgb')
         cam_bp.set_attribute('image_size_x', str(CAMERA_RESOLUTION[0]))
         cam_bp.set_attribute('image_size_y', str(CAMERA_RESOLUTION[1]))
-        cam_bp.set_attribute('sensor_tick', '0.0') # manual trigger
+        cam_bp.set_attribute('sensor_tick', '0.1') # manual trigger
 
         seg_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
         seg_bp.set_attribute('image_size_x', str(CAMERA_RESOLUTION[0]))
         seg_bp.set_attribute('image_size_y', str(CAMERA_RESOLUTION[1]))
-        seg_bp.set_attribute('sensor_tick', '0.0') # manual trigger
+        seg_bp.set_attribute('sensor_tick', '0.1') # manual trigger
 
         # Spawn sensors
         self.rgb_cam = world.spawn_actor(cam_bp, cam_transform, attach_to=ego_vehicle)
@@ -349,23 +345,31 @@ class DataCollector:
 
     def save_data(self):
         now = time.time()
-        if now - self.last_save >= SAVE_INTERVAL:
-            rgb = self.rgb_image
-            seg = self.seg_image
-            if (rgb is not None) and (seg is not None) and (rgb.frame == seg.frame):
-                rgb_array = np.frombuffer(rgb.raw_data, dtype = np.uint8)
-                rgb_array = rgb_array.reshape((rgb.height, rgb.width, 4))[:, :, :3]
-                self.latest_rgb = rgb_array
-                self.latest_mask = self.process_segmentation(seg)
+
+        # 1 — always refresh the in‑memory preview buffers
+        rgb = self.rgb_image
+        seg = self.seg_image
+        if (rgb is not None) and (seg is not None) and (rgb.frame == seg.frame):
+            rgb_array = np.frombuffer(rgb.raw_data, dtype=np.uint8) \
+                .reshape((rgb.height, rgb.width, 4))[:, :, :3]
+
+            self.latest_rgb  = rgb_array
+            self.latest_mask = self.process_segmentation(seg)
+
+            # 2 — only touch the disk on SAVE_INTERVAL
+            if now - self.last_save >= SAVE_INTERVAL:
                 frame_id = rgb.frame
-
-                # Async save
-                threading.Thread(target=Image.fromarray(rgb_array[:, :, ::-1]).save,
-                                 args=(f"{SAVE_RGB_PATH}/{frame_id:06d}.png",), daemon=True).start()
-                threading.Thread(target=Image.fromarray(self.latest_mask).save,
-                                 args=(f"{SAVE_MASK_PATH}/{frame_id:06d}.png",), daemon=True).start()
-
-                print(f"Saved frame {frame_id}")
+                threading.Thread(
+                    target=Image.fromarray(rgb_array[:, :, ::-1]).save,
+                    args=(f"{SAVE_RGB_PATH}/{frame_id:06d}.png",),
+                    daemon=True
+                ).start()
+                threading.Thread(
+                    target=Image.fromarray(self.latest_mask).save,
+                    args=(f"{SAVE_MASK_PATH}/{frame_id:06d}.png",),
+                    daemon=True
+                ).start()
+                
                 self.last_save = now
         
         return;
@@ -373,7 +377,7 @@ class DataCollector:
     def preview(self):
         if (self.latest_rgb is not None) and (self.latest_mask is not None):
             combined = np.hstack((self.latest_rgb, self.latest_mask))
-            combined = cv2.resize(combined, (720, 203))
+            combined = cv2.resize(combined, (1280, 360))
             cv2.imshow("RGB + Segmentation", combined)
             cv2.waitKey(1)
         
@@ -395,30 +399,56 @@ def main():
     # Initialize environment
     client = carla.Client('localhost', 2000)
     client.set_timeout(10.0)
-    world = client.load_world(TOWN_MAP)
+
+    # Load world - select town
+    # https://carla.readthedocs.io/en/latest/core_map/
+    town_names = [
+        'Town01',
+        'Town02',
+        'Town03',
+        'Town04',
+        'Town05',
+        'Town06',
+        'Town07',
+        'Town10',
+        'Town11',
+        'Town12'
+    ]
+    print("\nAvailable towns:")
+    print(", ".join(town_names))
+    town = input("Enter the town you want to load (e.g., Town01): ").strip()
+    if town not in town_names:
+        print(f"Invalid town '{town}'. Falling back to default '{town_names[0]}'")
+        town = town_names[0]
+    print(f"Loading {town}...")
+    world = client.load_world(town)
     
     # Set synchronous mode
     settings = world.get_settings()
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
+    settings.no_rendering_mode = True # Να σώσουμε τίποτα από performance!
     world.apply_settings(settings)
 
     try:
-        # Spawn ego vehicle
-        ego_bp = random.choice(world.get_blueprint_library().filter('vehicle.tesla.model3'))
-        ego = world.spawn_actor(ego_bp, random.choice(world.get_map().get_spawn_points()))
-        ego.set_autopilot(True)
-
-        # Initialize systems
         weather = DynamicWeather(world)
-        traffic = TrafficGenerator(client, world)
-        collector = DataCollector(world, ego)
 
-        # Configure traffic
+        traffic = TrafficGenerator(client, world)
         traffic.configure_traffic_manager()
         traffic.spawn_vehicles()
         traffic.spawn_pedestrians()
-        traffic.shorten_traffic_lights_durations()
+
+        # All existing vehicles after you spawned traffic
+        vehicles = world.get_actors().filter("vehicle.*")
+        free_points = [p for p in world.get_map().get_spawn_points()
+                       if not any(v.get_location().distance(p.location) < 1.0 for v in vehicles)]
+
+        # Spawn ego vehicle
+        ego_bp = random.choice(world.get_blueprint_library().filter('vehicle.tesla.model3'))
+        ego    = world.spawn_actor(ego_bp, random.choice(free_points))
+        ego.set_autopilot(True)
+        ego_current_location = ego.get_location()
+        collector = DataCollector(world, ego)
 
         # Main loop
         while True:
@@ -427,13 +457,19 @@ def main():
             weather.tick(settings.fixed_delta_seconds)
             world.set_weather(weather.weather)
 
-            collector.save_data()
+            temp_location = ego.get_location() # Φανάριαααααααα!
+            if (temp_location.x != ego_current_location.x) and \
+                (temp_location.y != ego_current_location.y):
+                collector.save_data()
+            ego_current_location = temp_location
+
             collector.preview()
     except Exception as e:
         print(f"Error: {e}")
     finally:
         # Cleanup
         settings.synchronous_mode = False
+        settings.no_rendering_mode = False
         world.apply_settings(settings)
         traffic.cleanup()
         collector.cleanup()
