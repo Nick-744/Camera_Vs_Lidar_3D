@@ -1,3 +1,15 @@
+# Για να μην έχουμε σφάλμα με το OpenMP!!! Χρειάζεται μόνο στο αρχείο που εκτελείται 1ο!
+from os import environ
+environ["KMP_DUPLICATE_LIB_OK"] = 'TRUE'
+''' OMP: Error #15: Initializing libiomp5md.dll, but found libiomp5md.dll already initialized.
+OMP: Hint This means that multiple copies of the OpenMP runtime have been linked into the program.
+That is dangerous, since it can degrade performance or cause incorrect results. The best thing to
+do is to ensure that only a single OpenMP runtime is linked into the process, e.g. by avoiding
+static linking of the OpenMP runtime in any library. As an unsafe, unsupported, undocumented
+workaround you can set the environment variable KMP_DUPLICATE_LIB_OK=TRUE to allow the
+program to continue to execute, but that may cause crashes or silently produce incorrect
+results. For more information, please see http://www.intel.com/software/products/support/. '''
+
 import torch
 import cv2
 from os import listdir
@@ -118,7 +130,7 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # Potato PC ή όχι...;
     model = get_model(device)
-    print(next(model.parameters()).device) # πρέπει να δώσει cuda:0 για GPU χρήση!
+    print(f'Συσκευή εκτέλεσης: {next(model.parameters()).device}\n') # Πρέπει να δώσει cuda:0 για GPU χρήση!
 
     optimizer = torch.optim.Adam(model.parameters(), lr = 1e-4)
     criterion = torch.nn.CrossEntropyLoss()
