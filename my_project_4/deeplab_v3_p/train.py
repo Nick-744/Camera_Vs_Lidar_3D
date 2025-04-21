@@ -112,7 +112,7 @@ def main():
     image_path = abspath(join(base_path, 'dataset', 'rgb'))
     mask_path  = abspath(join(base_path, 'dataset', 'masks'))
     dataset = MyDataset(image_path, mask_path, transform)
-    loader = torch.utils.data.DataLoader(dataset, batch_size = 20, shuffle = True, drop_last = True)
+    loader = torch.utils.data.DataLoader(dataset, batch_size = 16, shuffle = True, drop_last = True)
     # drop_last = True για να μην έχουμε BatchNorm σφάλμα!
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # Potato PC ή όχι...;
