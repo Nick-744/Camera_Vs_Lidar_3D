@@ -1,3 +1,7 @@
+# Για να μην έχουμε σφάλμα με το OpenMP!!! Χρειάζεται μόνο στο αρχείο που εκτελείται 1ο!
+from os import environ
+environ["KMP_DUPLICATE_LIB_OK"] = 'TRUE'
+
 import torch
 import cv2
 import matplotlib.pyplot as plt
@@ -32,17 +36,17 @@ def paint(image, mask_result): # Ζωγραφίζουμεεε!
 
     return;
 
-from my_model import model, model_input_size
 from transformer import transform
+import my_model
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # Potato PC ή όχι...;
     base_path = dirname(abspath(__file__))
 
     # Φορτώνουμε το μοντέλο που εκπαιδεύσαμε με το train.py!
+    model = my_model.get_model(device)
     model.load_state_dict(torch.load('my_road_model.pth', map_location = 'cpu'))
     model.eval()
-    model.to(device)
 
     image_path = abspath(join(base_path, '..', 'KITTI', 'data_road', 'testing', 'image_2')) # Για test, υπάρχει από:
                                                                                             # um_000000.png  -> um_000095.png
@@ -50,7 +54,7 @@ def main():
                                                                                             # uu_000000.png  -> uu_000099.png
     for i in range(10, 15):
         image = cv2.cvtColor(cv2.imread(join(image_path, f'um_0000{i}.png')), cv2.COLOR_BGR2RGB)
-        img = cv2.resize(image, model_input_size, interpolation = cv2.INTER_LINEAR)
+        img = cv2.resize(image, my_model.model_input_size, interpolation = cv2.INTER_LINEAR)
 
         input_tensor = transform(img).unsqueeze(0)
         input_tensor = input_tensor.to(device)

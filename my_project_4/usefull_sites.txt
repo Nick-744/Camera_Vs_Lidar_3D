@@ -8,6 +8,7 @@ https://carla.org/
 https://www.youtube.com/@FullSimDriving/videos
 https://sagnibak.github.io/blog/how-to-use-carla/
 
+PyTorch με CUDA: conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
 
 
 
