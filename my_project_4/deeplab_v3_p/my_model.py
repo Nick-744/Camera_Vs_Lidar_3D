@@ -5,14 +5,13 @@ import torch.nn as nn
 weights = None
 model = deeplabv3_mobilenet_v3_large(weights = weights)
 
-# - Θέλουμε 3 κλάσεις:
-# α) ο δρόμος (και οι 2 λωρίδες, αν είναι "ενωμένες")
-# β) η αντίθετη λωρίδα, αν είναι "διαχωρισμένες"
-# γ) το υπόλοιπο της εικόνας (εκτός δρόμου)
-model.classifier[4] = nn.Conv2d(256, 3, kernel_size = 1)
-# Οπότε, πρέπει να αντικαταστήσουμε το τελευταίο layer του classifier
-# με 1 Conv2d layer που έχει ΜΟΝΟ 3 εξόδους (classes)!
+# - Θέλουμε 2 κλάσεις:
+# α) ο δρόμος (και οι 2 λωρίδες)
+# β) το υπόλοιπο της εικόνας (εκτός δρόμου)
+model.classifier[4] = nn.Conv2d(256, 2, kernel_size = 1)
+# Οπότε, πρέπει να αντικαταστήσουμε το τελευταίο layer {4} του classifier
+# με 1 Conv2d layer που έχει ΜΟΝΟ 2 εξόδους (classes)!
 # Επίσης, kernel_size = 1 γιατί θέλουμε να κάνουμε pixel-wise classification!
 
 # Καθορισμός ενιαίου input size για συμβατότητα με το μοντέλο!
-model_input_size = (256, 256) # Για να το χρησιμοποιήσουμε στο train.py και στο inference.py!
+model_input_size = (512, 512) # Για να το χρησιμοποιήσουμε στο train.py και στο inference.py!

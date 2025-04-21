@@ -26,7 +26,7 @@ class MyDataset(torch.utils.data.Dataset):
         img_filename = self.images[idx]
         img_path = join(self.images_dir, img_filename)
 
-        mask_filename = img_filename.replace('_', '_road_', 1)
+        mask_filename = img_filename # Τουλάχιστον, στο dataset μου!
         mask_path = join(self.masks_dir, mask_filename)
 
         image = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
@@ -54,7 +54,8 @@ class MyDataset(torch.utils.data.Dataset):
         image = cv2.resize(image, new_size, interpolation = cv2.INTER_LINEAR)
         mask = cv2.resize(mask, new_size, interpolation = cv2.INTER_NEAREST)
 
-        mapping = {0: 0, 29: 0, 76: 1, 105: 2} # Αλλιώς, πρέπει να έχω 106 κλάσεις..., ενώ θέλω ΜΟΝΟ 3!
+        mapping = {29: 0, 76: 1} # Αλλιώς, πρέπει να έχω 106 κλάσεις..., ενώ θέλω ΜΟΝΟ 3!
+        #print(np.unique(mask))  # Για να ξέρω πόσες κλάσεις έχω στο mask!
         mask = np.vectorize(mapping.get)(mask)
         mask = torch.from_numpy(mask).long()
 
@@ -108,10 +109,10 @@ from my_model import model
 def main():
     base_path = dirname(abspath(__file__))
 
-    image_path = abspath(join(base_path, '..', 'KITTI', 'data_road', 'training', 'image_2'))
-    mask_path  = abspath(join(base_path, '..', 'KITTI', 'data_road', 'training', 'gt_image_2'))
+    image_path = abspath(join(base_path, 'dataset', 'rgb'))
+    mask_path  = abspath(join(base_path, 'dataset', 'masks'))
     dataset = MyDataset(image_path, mask_path, transform)
-    loader = torch.utils.data.DataLoader(dataset, batch_size = 4, shuffle = True, drop_last = True)
+    loader = torch.utils.data.DataLoader(dataset, batch_size = 20, shuffle = True, drop_last = True)
     # drop_last = True για να μην έχουμε BatchNorm σφάλμα!
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # Potato PC ή όχι...;
@@ -120,7 +121,7 @@ def main():
     criterion = torch.nn.CrossEntropyLoss()
 
     train_model(
-        epochs = 20,
+        epochs = 60,
         model = model,
         loader = loader,
         optimizer = optimizer,
