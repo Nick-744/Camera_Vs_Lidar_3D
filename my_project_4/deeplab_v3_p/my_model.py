@@ -1,9 +1,11 @@
-from torchvision.models.segmentation import deeplabv3_resnet18
+#from torchvision.models import resnet18 # Πιο περίπλοκη προσαρμογή στο ζητούμενο σε θέμα κώδικα...
+' https://pytorch.org/vision/main/models.html '
+from torchvision.models.segmentation import deeplabv3_mobilenet_v3_large
 import torch.nn as nn
 
 # Model - DeepLabV3 με MobileNetV3-Large backbone!
-weights = None
-model = deeplabv3_resnet18(weights = weights)
+weights = None # Καθαρά δικό μας μοντέλο, χωρίς προεκπαίδευση!
+model = deeplabv3_mobilenet_v3_large(weights = weights)
 
 # - Θέλουμε 2 κλάσεις:
 # α) ο δρόμος (και οι 2 λωρίδες)
