@@ -1,5 +1,6 @@
 # Για να μην έχουμε σφάλμα με το OpenMP!!! Χρειάζεται μόνο στο αρχείο που εκτελείται 1ο!
 from os import environ
+
 environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 ''' OMP: Error #15: Initializing libiomp5md.dll, but found libiomp5md.dll already initialized.
 OMP: Hint This means that multiple copies of the OpenMP runtime have been linked into the program.
@@ -9,11 +10,14 @@ static linking of the OpenMP runtime in any library. As an unsafe, unsupported, 
 workaround you can set the environment variable KMP_DUPLICATE_LIB_OK=TRUE to allow the
 program to continue to execute, but that may cause crashes or silently produce incorrect
 results. For more information, please see http://www.intel.com/software/products/support/. '''
+
 environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # RuntimeError: CUDA error: an illegal memory access was encountered
 # CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
 # For debugging consider passing CUDA_LAUNCH_BLOCKING=1
 # Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+# ----------------------------------------
 
 import torch
 import cv2
@@ -24,6 +28,8 @@ from tqdm import tqdm
 
 from transformer import transform
 import my_model
+
+torch.backends.cudnn.enabled = False # Για debugging!
 
 class MyDataset(torch.utils.data.Dataset):
     def __init__(self, images_dir, masks_dir, transform = None):
@@ -61,7 +67,7 @@ class MyDataset(torch.utils.data.Dataset):
         # ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 256, 1, 1])
 
         ''' Αυτό μπορεί να συμβεί:
-        - είτε αν κάνουμε resize σε πολύ μικρές εικόνες (π.χ. 256x256, όπως εγώ...)
+        - είτε αν κάνουμε resize σε πολύ μικρές εικόνες (π.χ. 256x256...)
         - είτε αν το τελευταίο batch έχει μόνο 1 δείγμα!!!
         
         ### Το διόρθωσα βάζοντας drop_last = True στο DataLoader! '''
@@ -89,8 +95,8 @@ def train_1_epoch(model, loader, optimizer, criterion, device, epoch):
     loop = tqdm(loader, desc = f"Epoch {epoch + 1}", leave = True)
     for (images, masks) in loop:
         (images, masks) = (images.to(device), masks.to(device))
-        #print(images.device, masks.device)
-
+        #print(images.device, masks.device) # Στην μονάδα επεξεργασίας που θα φορτωθεί το
+                                            # μοντέλο, πρέπει να φορτωθούν και τα δεδομένα!
         optimizer.zero_grad()
         output = model(images)['out']
         loss = criterion(output, masks)
