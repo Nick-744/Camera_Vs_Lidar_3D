@@ -71,6 +71,7 @@ def train_1_epoch(model, loader, optimizer, criterion, device, epoch):
     loop = tqdm(loader, desc = f"Epoch {epoch + 1}", leave = True)
     for (images, masks) in loop:
         (images, masks) = (images.to(device), masks.to(device))
+        #print(images.device, masks.device)
 
         optimizer.zero_grad()
         output = model(images)['out']
@@ -104,7 +105,7 @@ def train_model(epochs, model, loader, optimizer, criterion, device):
     return;
 
 from transformer import transform
-from my_model import model
+from my_model import get_model
 
 def main():
     base_path = dirname(abspath(__file__))
@@ -116,7 +117,9 @@ def main():
     # drop_last = True για να μην έχουμε BatchNorm σφάλμα!
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # Potato PC ή όχι...;
-    model.to(device)
+    model = get_model(device)
+    print(next(model.parameters()).device) # πρέπει να δώσει cuda:0 για GPU χρήση!
+
     optimizer = torch.optim.Adam(model.parameters(), lr = 1e-4)
     criterion = torch.nn.CrossEntropyLoss()
 
