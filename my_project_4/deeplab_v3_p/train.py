@@ -17,7 +17,8 @@ from os.path import join, dirname, abspath
 import numpy as np
 from tqdm import tqdm
 
-from my_model import model_input_size
+from transformer import transform
+import my_model
 
 class MyDataset(torch.utils.data.Dataset):
     def __init__(self, images_dir, masks_dir, transform = None):
@@ -62,7 +63,7 @@ class MyDataset(torch.utils.data.Dataset):
         # target_height = 256
         # scale = target_height / image.shape[0]
         # Στην αρχή, ήθελα να κρατήσω το aspect ratio... δηλαδή, 1η λύση (μεγαλύτερες εικόνες)!
-        new_size = model_input_size
+        new_size = my_model.model_input_size
         image = cv2.resize(image, new_size, interpolation = cv2.INTER_LINEAR)
         mask = cv2.resize(mask, new_size, interpolation = cv2.INTER_NEAREST)
 
@@ -116,9 +117,6 @@ def train_model(epochs, model, loader, optimizer, criterion, device):
 
     return;
 
-from transformer import transform
-from my_model import get_model
-
 def main():
     base_path = dirname(abspath(__file__))
 
@@ -129,7 +127,7 @@ def main():
     # drop_last = True για να μην έχουμε BatchNorm σφάλμα!
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # Potato PC ή όχι...;
-    model = get_model(device)
+    model = my_model.get_model(device)
     print(f'Συσκευή εκτέλεσης: {next(model.parameters()).device}\n') # Πρέπει να δώσει cuda:0 για GPU χρήση!
 
     optimizer = torch.optim.Adam(model.parameters(), lr = 1e-4)
