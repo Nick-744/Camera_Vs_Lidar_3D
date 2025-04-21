@@ -14,4 +14,4 @@ model.classifier[4] = nn.Conv2d(256, 2, kernel_size = 1)
 # Επίσης, kernel_size = 1 γιατί θέλουμε να κάνουμε pixel-wise classification!
 
 # Καθορισμός ενιαίου input size για συμβατότητα με το μοντέλο!
-model_input_size = (512, 512) # Για να το χρησιμοποιήσουμε στο train.py και στο inference.py!
+model_input_size = (256, 256) # Για να το χρησιμοποιήσουμε στο train.py και στο inference.py!
