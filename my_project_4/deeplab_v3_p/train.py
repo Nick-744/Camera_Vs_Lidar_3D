@@ -1,6 +1,6 @@
 # Για να μην έχουμε σφάλμα με το OpenMP!!! Χρειάζεται μόνο στο αρχείο που εκτελείται 1ο!
 from os import environ
-environ["KMP_DUPLICATE_LIB_OK"] = 'TRUE'
+environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 ''' OMP: Error #15: Initializing libiomp5md.dll, but found libiomp5md.dll already initialized.
 OMP: Hint This means that multiple copies of the OpenMP runtime have been linked into the program.
 That is dangerous, since it can degrade performance or cause incorrect results. The best thing to
@@ -9,6 +9,11 @@ static linking of the OpenMP runtime in any library. As an unsafe, unsupported, 
 workaround you can set the environment variable KMP_DUPLICATE_LIB_OK=TRUE to allow the
 program to continue to execute, but that may cause crashes or silently produce incorrect
 results. For more information, please see http://www.intel.com/software/products/support/. '''
+environ['CUDA_LAUNCH_BLOCKING'] = '1'
+# RuntimeError: CUDA error: an illegal memory access was encountered
+# CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+# For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+# Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
 
 import torch
 import cv2
