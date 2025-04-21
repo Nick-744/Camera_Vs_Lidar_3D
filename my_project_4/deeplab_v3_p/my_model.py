@@ -20,4 +20,4 @@ def get_model(device):
     return model.to(device);
 
 # Καθορισμός ενιαίου input size για συμβατότητα με το μοντέλο!
-model_input_size = (256, 256) # Για να το χρησιμοποιήσουμε στο train.py και στο inference.py!
+model_input_size = (368, 368) # Για να το χρησιμοποιήσουμε στο train.py και στο inference.py!
