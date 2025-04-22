@@ -40,12 +40,12 @@ from transformer import transform
 import my_model
 
 def main():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # Potato PC ή όχι...;
+    device = torch.device('cpu')
     base_path = dirname(abspath(__file__))
 
     # Φορτώνουμε το μοντέλο που εκπαιδεύσαμε με το train.py!
     model = my_model.get_model(device)
-    model.load_state_dict(torch.load('my_road_model.pth', map_location = 'cpu'))
+    model.load_state_dict(torch.load('my_road_model.pth', map_location = 'cpu', weights_only = True))
     model.eval()
 
     image_path = abspath(join(base_path, '..', 'KITTI', 'data_road', 'testing', 'image_2')) # Για test, υπάρχει από:
