@@ -3,13 +3,16 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-def region_growing(img, seed, threshold = 5):
+def region_growing(img, seeds, threshold = 5):
+    ''' Γυρνάει την μάσκα της περιοχής βάση των seeds που δώσαμε.
+    img -> Γκρι εικόνα '''
+
     (height, width) = img.shape
     segmented = np.zeros((height, width), np.uint8)
     visited = np.zeros_like(segmented, dtype = bool) # Όλα false αρχικά!
     
-    region_intensity = img[seed]
-    region_pixels = [seed]
+    region_intensity = np.mean([img[point] for point in seeds])
+    region_pixels = list(seeds)
 
     neighbors = [(-1, -1), (-1, 0), (-1, +1),
                  ( 0, -1),          ( 0, +1),
@@ -40,7 +43,9 @@ def region_growing(img, seed, threshold = 5):
     return segmented;
 
 def apply_grabcut(image, mask):
-    ''' Γυρνάει την τελική μάσκα μετά το GrabCut '''
+    ''' Γυρνάει την τελική μάσκα μετά το GrabCut.
+    image -> Έγχρωμη εικόνα (BGR format)
+    mask  -> Το αποτέλεσμα του region growing '''
 
     bgModel = np.zeros((1, 65), np.float64)
     fgModel = np.zeros((1, 65), np.float64)
@@ -60,10 +65,54 @@ def apply_grabcut(image, mask):
     
     return grabcut_mask;
 
+def my_road_detection(image, image_color):
+    ''' Η έγχρωμη εικόνα περνά by reference,
+    το αποτέλεσμα περνιέται απευθείας στην image_color! '''
+
+    (height, width) = image.shape
+
+    seed_points = [
+        (height - 1, width//2) # Το μόνο σίγουρο seed...
+        # (height - height//4, width//2)
+    ]
+    seg_result = region_growing(image, seeds = seed_points, threshold = 8)
+    seg_result = cv2.dilate(seg_result, None, iterations = 4)
+
+    temp = np.where(seg_result == 255, cv2.GC_FGD, cv2.GC_PR_BGD).astype('uint8')
+    # Εάν seg_result == 255 -> True, τότε GC_FGD, αλλιώς GC_PR_BGD (πιθανό background)
+    grabcut_mask = apply_grabcut(image_color, temp)
+
+    ' https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html '
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(grabcut_mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    ' https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html '
+    (contours, _) = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    largest_contour = max(contours, key = cv2.contourArea) # Μεγαλύτερο contour σε επιφάνεια!
+    final_mask = np.zeros_like(mask)
+    cv2.drawContours(final_mask, [largest_contour], -1, 255, thickness = cv2.FILLED)
+
+    return (final_mask, largest_contour);
+
+def find_mask_vertices(largest_contour):
+    '''
+    Βρίσκει τις κορυφές της περιμέτρου της μάσκας!
+    Επιστρέφει λίστα με σημεία [(x, y), (x, y), ...]
+    '''
+
+    peri = cv2.arcLength(largest_contour, True) # Υπολογισμός περιμέτρου
+    epsilon = 0.01 * peri # Το 0.01 δίνει συνήθως πάνω από 4 σημεία!
+
+    approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+    vertices = [tuple(pt[0]) for pt in approx]
+
+    return vertices;
+
 def main():
     base_dir = os.path.dirname(__file__)
 
-    for i in range(5, 10):
+    for i in range(6, 10):
         temp = os.path.join(
             base_dir,
             'data_road',
@@ -75,53 +124,26 @@ def main():
 
         # Φορτώνουμε γκρι και έγχρωμη εικόνα!
         image = cv2.imread(img_file, cv2.IMREAD_GRAYSCALE)
-        image_color = cv2.imread(img_file)
-        (height, width) = image.shape
+        image_color = cv2.imread(img_file, cv2.IMREAD_COLOR) # Σε BGR format!
+        
+        (road_mask, largest_contour) = my_road_detection(image, image_color)
+        corners = find_mask_vertices(largest_contour)
 
-        seed_point = (height - 1, width//2) # Το μόνο σίγουρο seed...
-        seg_result = region_growing(image, seed = seed_point, threshold = 12)
+        '''
+        - Βρες το context hull των corner points
+        - Βρες έναν τρόπο να το χωρίζεις σε 2 τμήματα που αντιστοιχούν στα lanes
+        '''
 
-        temp = np.where(seg_result == 255, cv2.GC_FGD, cv2.GC_PR_BGD).astype('uint8')
-        grabcut_mask = apply_grabcut(image_color, temp)
+        # # Ζωγραφικήηη
+        # plt.figure(figsize = (10, 6))
 
-        ' https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html '
-        final_mask = cv2.morphologyEx(grabcut_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-        # result = cv2.bitwise_and(image_color, image_color, mask = final_mask)
+        # # Πρέπει να γίνει μετατροπή σε RGB format, για να εμφανιστεί σωστά στο matplotlib!
+        # plt.imshow(cv2.cvtColor(end, cv2.COLOR_BGR2RGB))
 
-        ' https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html '
-        (contours, _) = cv2.findContours(final_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(image_color, contours, -1, (0, 255, 0), 3)
-
-        # ' https://stackoverflow.com/questions/72265055/how-does-approxpolydp-and-epsilon-parameter-work '
-        # contours, _ = cv2.findContours(final_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # if contours:
-        #     largest_contour = max(contours, key = cv2.contourArea)
-
-        # epsilon = 0.02 * cv2.arcLength(largest_contour, True)
-        # approx = cv2.approxPolyDP(largest_contour, epsilon, True)
-
-        # # Draw the polygon on image
-        # cv2.drawContours(image_color, [approx], -1, (255, 255, 255), 2)
-
-        # # If it's a 4-corner shape (like a road rectangle), print corners
-        # if len(approx) == 4:
-        #     for idx, point in enumerate(approx):
-        #         pt = tuple(point[0])
-        #         cv2.circle(image_color, pt, 6, (0, 255, 255), -1)
-        #         cv2.putText(image_color, f"{idx+1}", pt, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-        #         print(f"Corner {idx+1}: {pt}")
-        # else:
-        #     print(f"Approximated shape has {len(approx)} corners.")
-
-        # Ζωγραφικήηη
-        plt.figure(figsize = (10, 6))
-
-        plt.imshow(image_color)
-        plt.title('Περίγραμμα')
-
-        plt.axis('off')
-        plt.tight_layout()
-        plt.show()
+        # plt.axis('off')
+        # plt.tight_layout()
+        # plt.show()
+        # plt.close()
 
     return;
 
