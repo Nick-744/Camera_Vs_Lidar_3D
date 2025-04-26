@@ -9,7 +9,7 @@ class FillPaint:
         self.masks_dir = masks_dir
         self.rgb_dir   = rgb_dir
 
-        self.edited_masks_dir = os.path.join(masks_dir, '..', 'edited_masks')
+        self.edited_masks_dir = os.path.abspath(os.path.join(masks_dir, '..', 'edited_masks'))
         os.makedirs(self.edited_masks_dir, exist_ok = True)
 
         self.mask_files = sorted([
@@ -103,6 +103,8 @@ class FillPaint:
         return;
 
     def next_mask(self):
+        self.save_mask() # Auto-save
+        
         self.index += 1
         if self.index >= len(self.mask_files):
             print('ΤΕΛΟΣ!')
