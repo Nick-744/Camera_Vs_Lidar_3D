@@ -9,6 +9,9 @@ class FillPaint:
         self.masks_dir = masks_dir
         self.rgb_dir   = rgb_dir
 
+        self.edited_masks_dir = os.path.join(masks_dir, '..', 'edited_masks')
+        os.makedirs(self.edited_masks_dir, exist_ok = True)
+
         self.mask_files = sorted([
             f for f in os.listdir(masks_dir) if f.endswith('.png')
         ])
@@ -93,7 +96,7 @@ class FillPaint:
         return;
 
     def save_mask(self):
-        save_path = os.path.join(self.masks_dir, f'edited_{self.mask_files[self.index]}')
+        save_path = os.path.join(self.edited_masks_dir, f'edited_{self.mask_files[self.index]}')
         Image.fromarray(self.mask_array).save(save_path)
         print(f'Saved: {save_path}')
 
