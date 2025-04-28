@@ -3,6 +3,8 @@ import numpy as np
 import cv2
 import os
 
+from time import time
+
 # Type Annotations
 from typing import List, Tuple
 from cv2.typing import MatLike
@@ -75,7 +77,43 @@ def apply_grabcut(image: MatLike, mask: np.ndarray) -> np.ndarray:
     
     return grabcut_mask;
 
-def my_road_detection(image: MatLike, image_color: MatLike) -> Tuple[np.ndarray, np.ndarray]:
+def apply_grabcut_fast(image: MatLike,
+                       mask: np.ndarray,
+                       downscale: float = 0.5) -> np.ndarray:
+    '''
+    Γρηγορότερο GrabCut μέσω χρήσης μικρότερης εικόνας!
+    
+    image -> Έγχρωμη εικόνα (BGR format)
+    mask  -> Το αποτέλεσμα του region growing
+    downscale -> Πόσο να μικρύνει η εικόνα (π.χ. 0.5 = 50%)
+    '''
+    (height, width) = image.shape[:2] # [:2] γιατί περιέχει και τα 3 κανάλια (BGR)!
+    small_size = (int(width * downscale), int(height * downscale))
+
+    small_image = cv2.resize(image, small_size, interpolation = cv2.INTER_LINEAR)
+    small_mask  = cv2.resize(mask, small_size, interpolation = cv2.INTER_NEAREST)
+    # cv2.INTER_NEAREST -> Ώστε να παραμένουν οι τιμές της μάσκας 0 & 255!
+
+    bgModel = np.zeros((1, 65), np.float64)
+    fgModel = np.zeros((1, 65), np.float64)
+    cv2.grabCut(
+        small_image,
+        small_mask,
+        None,
+        bgModel,
+        fgModel,
+        15,
+        cv2.GC_INIT_WITH_MASK
+    )
+
+    result_small = np.where((small_mask == 1) | (small_mask == 3), 255, 0).astype('uint8')
+    result_big = cv2.resize(result_small, (width, height), interpolation=cv2.INTER_NEAREST)
+
+    return result_big;
+
+def my_road_detection(image: MatLike,
+                      image_color: MatLike,
+                      method: str = 'grabcut') -> Tuple[np.ndarray, np.ndarray]:
     '''
     Συνδυάζει region growing και grabcut για να βρει την μάσκα του δρόμου.
     Παράλληλα, εφαρμόζει και κάποιες μορφολογικές μετασχηματίσεις για να καθαρίσει την εικόνα!
@@ -84,7 +122,8 @@ def my_road_detection(image: MatLike, image_color: MatLike) -> Tuple[np.ndarray,
     (height, width) = image.shape
 
     seed_points = (height - 1, width//2) # Το μόνο σίγουρο seed...
-    seg_result = region_growing(image, seed = seed_points, threshold = 5)
+    threshold = 5 if method == 'grabcut' else 10 # Βάση δοκιμών!
+    seg_result = region_growing(image, seed = seed_points, threshold = threshold)
 
     ' https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html '
     kernel = np.ones((5, 5), np.uint8)
@@ -92,14 +131,20 @@ def my_road_detection(image: MatLike, image_color: MatLike) -> Tuple[np.ndarray,
     temp = cv2.morphologyEx(temp, cv2.MORPH_OPEN, kernel)
     temp = cv2.morphologyEx(temp, cv2.MORPH_CLOSE, kernel)
 
-    temp = np.where(temp == 255, cv2.GC_FGD, cv2.GC_PR_BGD).astype('uint8')
-    # Εάν seg_result == 255 -> True, τότε GC_FGD, αλλιώς GC_PR_BGD (πιθανό background)
-    grabcut_mask = apply_grabcut(image_color, temp)
+    if method == 'grabcut':
+        temp = np.where(temp == 255, cv2.GC_FGD, cv2.GC_PR_BGD).astype('uint8')
+        # Εάν seg_result == 255 -> True, τότε GC_FGD, αλλιώς GC_PR_BGD (πιθανό background)
+        mask = apply_grabcut(image_color, temp)
+    elif method == 'grabcut_fast':
+        temp = np.where(temp == 255, cv2.GC_FGD, cv2.GC_PR_BGD).astype('uint8')
+        mask = apply_grabcut_fast(image_color, temp, downscale = 0.4)
+    else:
+        raise ValueError(f"Άγνωστη μέθοδος: {method}");
 
     ' https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html '
-    (contours, _) = cv2.findContours(grabcut_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    (contours, _) = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     largest_contour = max(contours, key = cv2.contourArea) # Μεγαλύτερο contour σε επιφάνεια!
-    final_mask = np.zeros_like(grabcut_mask)
+    final_mask = np.zeros_like(mask)
     cv2.drawContours(final_mask, [largest_contour], -1, 255, thickness = cv2.FILLED)
 
     return (final_mask, largest_contour);
@@ -167,26 +212,23 @@ def lane_separation(image: MatLike,
         threshold = 60
     )
 
-    best_line = None
-    min_center_distance = float('inf')
-
     # Βρίσκουμε τη γραμμή πιο κοντά στο κέντρο της μάσκας!
     coords = np.column_stack(np.where(road_mask > 0))
     mask_center_x = int(np.mean(coords[:, 1]))
 
+    best_line = None
+    min_center_distance = float('inf')
     for line in lines:
         (rho, theta) = line[0]
-
         (a, b) = (np.cos(theta), np.sin(theta))
         (x0, y0) = (a * rho, b * rho)
         x1 = int(x0 + 1000 * (-b))
-        y1 = int(y0 + 1000 * (a))
+        y1 = int(y0 + 1000 * a)
         x2 = int(x0 - 1000 * (-b))
-        y2 = int(y0 - 1000 * (a))
+        y2 = int(y0 - 1000 * a)
 
-        center_x = (x1 + x2) // 2
+        center_x = (x1 + x2) // 2 # Δεν δουλεύει πάντα, αλλά είναι γρήγορο κριτήριο!
         dist = abs(center_x - mask_center_x)
-
         if dist < min_center_distance:
             min_center_distance = dist
             best_line = ((x1, y1), (x2, y2))
@@ -243,12 +285,15 @@ def split_convex_hull(
 
     return (lane1, lane2);
 
-def my_road_is(image: MatLike,
-               image_color: MatLike) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
+def my_road_is(
+    image: MatLike,
+    image_color: MatLike,
+    method: str = 'grabcut'
+) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
     '''
     Επιστρέφει 2 lanes (2 convex hulls) που χωρίζουν το δρόμο σε 2 λωρίδες.
     '''
-    (road_mask, largest_contour) = my_road_detection(image, image_color)
+    (road_mask, largest_contour) = my_road_detection(image, image_color, method)
     corners = find_mask_vertices(largest_contour)
     convex_hull = CH_graham_scan(np.array(corners))
     middle_white_line = lane_separation(image, road_mask) # Ή κίτρινη...
@@ -328,18 +373,24 @@ def main():
             'data_road',
             'testing',
             'image_2',
-            f'image.png'
+            f'um_00000{i}.png'
         )
         img_file = os.path.abspath(temp)
 
         # Φορτώνουμε γκρι και έγχρωμη εικόνα!
         image = cv2.imread(img_file, cv2.IMREAD_GRAYSCALE)
         image_color = cv2.imread(img_file, cv2.IMREAD_COLOR) # Σε BGR format!
+
+        if image is None or image_color is None:
+            print(f"Η εικόνα {img_file} δεν βρέθηκε!")
+            continue;
         
-        (lane1, lane2) = my_road_is(image, image_color)
-        draw_lanes(image_color, lane1, lane2)
+        start = time()
+        (lane1, lane2) = my_road_is(image, image_color, method = 'grabcut_fast')
+        print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
 
         # Ζωγραφικήηη
+        draw_lanes(image_color, lane1, lane2)
         plt.figure(figsize = (10, 6))
 
         # Πρέπει να γίνει μετατροπή σε RGB format, για να εμφανιστεί σωστά στο matplotlib!
