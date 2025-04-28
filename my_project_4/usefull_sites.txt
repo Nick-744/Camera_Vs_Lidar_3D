@@ -14,6 +14,6 @@ PyTorch με CUDA: conda install pytorch torchvision torchaudio pytorch-cuda=12.
 https://medium.com/@VK_Venkatkumar/segmentation-traditional-deep-learning-approaches-edd50a3308b3
 https://medium.com/@mansibagohil1512/region-growing-an-inclusive-overview-from-concept-to-code-in-image-segmentation-f12c5ba50709
 https://docs.opencv.org/3.4/d8/d83/tutorial_py_grabcut.html
-
+https://medium.com/data-science/a-hands-on-application-of-homography-ipm-18d9e47c152f
 
 
