@@ -4,6 +4,7 @@ import cv2
 import os
 
 from time import time
+from skimage.segmentation import random_walker
 
 # Type Annotations
 from typing import List, Tuple
@@ -111,6 +112,23 @@ def apply_grabcut_fast(image: MatLike,
 
     return result_big;
 
+def apply_random_walker(image: MatLike, mask: np.ndarray) -> np.ndarray:
+    '''
+    Εφαρμογή του Random Walker segmentation!
+
+    * image -> Εικόνα (αναγκαστικά με γκρι απόχρωση)
+    * Η είσοδος mask πρέπει να έχει:
+      1 -> background
+      2 -> foreground
+      0 -> unknown
+    '''
+    labels = random_walker(image, mask, beta = 20000, mode = 'bf', tol = 1e-4)
+    # Όσο μεγαλύτερο το beta, τόσο καλύτερα!
+
+    result = np.where(labels == 2, 255, 0).astype('uint8') # Όπου labels == 2 -> δρόμος!
+
+    return result;
+
 def my_road_detection(image: MatLike,
                       image_color: MatLike,
                       method: str = 'grabcut') -> Tuple[np.ndarray, np.ndarray]:
@@ -122,7 +140,12 @@ def my_road_detection(image: MatLike,
     (height, width) = image.shape
 
     seed_points = (height - 1, width//2) # Το μόνο σίγουρο seed...
-    threshold = 5 if method == 'grabcut' else 10 # Βάση δοκιμών!
+    if method == 'grabcut': # Βάση δοκιμών!
+        threshold = 5
+    elif method == 'grabcut_fast':
+        threshold = 10
+    elif method == 'random_walker':
+        threshold = 15
     seg_result = region_growing(image, seed = seed_points, threshold = threshold)
 
     ' https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html '
@@ -138,6 +161,12 @@ def my_road_detection(image: MatLike,
     elif method == 'grabcut_fast':
         temp = np.where(temp == 255, cv2.GC_FGD, cv2.GC_PR_BGD).astype('uint8')
         mask = apply_grabcut_fast(image_color, temp, downscale = 0.4)
+    elif method == 'random_walker':
+        seeds = np.ones_like(temp, dtype = np.uint8) # Όλα background (1)
+        seeds[temp == 255] = 2 # Σίγουρα δρόμος, λόγω region growing!
+        dilated = cv2.dilate((seeds == 2).astype(np.uint8), kernel, iterations = 6)
+        seeds[(dilated == 1) & (seeds != 2)] = 0 # Unknown area!
+        mask = apply_random_walker(image, seeds)
     else:
         raise ValueError(f"Άγνωστη μέθοδος: {method}");
 
@@ -436,20 +465,23 @@ def main():
             (lane1, lane2, convex_hull) = my_road_is(
                 image,
                 image_color,
-                method = 'grabcut_fast'
+                method = 'random_walker'
             )
             print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
+
+            (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
+            temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
+
+            # Ζωγραφικήηη
+            if temp < 2.2:
+                draw_lanes(image_color, lane1, lane2)
+            else:
+                print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
+                draw_road_convex_hull(image_color, convex_hull)
         except:
             print(f"Σφάλμα στην εικόνα {img_file}!")
+            continue;
 
-        (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
-        temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
-        # Ζωγραφικήηη
-        if temp < 2.2:
-            draw_lanes(image_color, lane1, lane2)
-        else:
-            print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
-            draw_road_convex_hull(image_color, convex_hull)
         plt.figure(figsize = (10, 6))
 
         # Πρέπει να γίνει μετατροπή σε RGB format, για να εμφανιστεί σωστά στο matplotlib!
