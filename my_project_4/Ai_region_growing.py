@@ -413,13 +413,13 @@ def polygon_area(vertices: List[Tuple[float, float]]) -> float:
 def main():
     base_dir = os.path.dirname(__file__)
 
-    for i in range(10, 98):
+    for i in range(0, 10):
         temp = os.path.join(
             base_dir,
             'data_road',
             'testing',
             'image_2',
-            f'um_0000{i}.png'
+            f'um_00000{i}.png'
         )
         img_file = os.path.abspath(temp)
 
@@ -445,7 +445,7 @@ def main():
         (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
         temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
         # Ζωγραφικήηη
-        if 0.5 < temp < 2.:
+        if temp < 2.2:
             draw_lanes(image_color, lane1, lane2)
         else:
             print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
