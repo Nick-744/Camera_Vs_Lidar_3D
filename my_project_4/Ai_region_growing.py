@@ -191,8 +191,7 @@ def CH_graham_scan(points: np.ndarray) -> np.ndarray: # Χορηγία του La
                                                    sorted_points[id]) > 0:
             stack.pop()
 
-        #append current point
-        stack.append(id)
+        stack.append(id) # Append current point
 
     return sorted_points[np.array(stack)];
 
@@ -217,9 +216,17 @@ def lane_separation(image: MatLike,
     mask_center_x = int(np.mean(coords[:, 1]))
 
     best_line = None
-    min_center_distance = float('inf')
+    best_score = float('inf')
     for line in lines:
         (rho, theta) = line[0]
+
+        '''
+        Κάνει την εύρεση της γραμμής σχεδόν αδύνατη...
+        angle_deg = np.degrees(theta)
+        if not (80 <= angle_deg <= 100):
+            continue; # Μόνο σχεδόν κατακόρυφες γραμμές!
+        '''
+        
         (a, b) = (np.cos(theta), np.sin(theta))
         (x0, y0) = (a * rho, b * rho)
         x1 = int(x0 + 1000 * (-b))
@@ -229,8 +236,8 @@ def lane_separation(image: MatLike,
 
         center_x = (x1 + x2) // 2 # Δεν δουλεύει πάντα, αλλά είναι γρήγορο κριτήριο!
         dist = abs(center_x - mask_center_x)
-        if dist < min_center_distance:
-            min_center_distance = dist
+        if dist < best_score:
+            best_score = dist
             best_line = ((x1, y1), (x2, y2))
 
     return best_line;
@@ -289,9 +296,10 @@ def my_road_is(
     image: MatLike,
     image_color: MatLike,
     method: str = 'grabcut'
-) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
+) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]], np.ndarray]:
     '''
-    Επιστρέφει 2 lanes (2 convex hulls) που χωρίζουν το δρόμο σε 2 λωρίδες.
+    Επιστρέφει τα 2 lanes (2 convex hulls) που χωρίζουν τον δρόμο σε 2 λωρίδες
+    και το convex hull του δρόμου!
     '''
     (road_mask, largest_contour) = my_road_detection(image, image_color, method)
     corners = find_mask_vertices(largest_contour)
@@ -299,7 +307,7 @@ def my_road_is(
     middle_white_line = lane_separation(image, road_mask) # Ή κίτρινη...
     (lane1, lane2) = split_convex_hull(convex_hull, middle_white_line)
 
-    return (lane1, lane2);
+    return (lane1, lane2, convex_hull);
 
 # --- Helpers ---
 
@@ -338,18 +346,39 @@ def draw_lanes(image_color: MatLike,
     # Ζωγραφικήηη
     overlay = image_color.copy()
 
-    lane1 = np.array(lane1, dtype=np.int32)
-    lane2 = np.array(lane2, dtype=np.int32)
+    lane1 = np.array(lane1, dtype = np.int32)
+    lane2 = np.array(lane2, dtype = np.int32)
 
-    cv2.fillPoly(overlay, [lane1], color=(255, 0, 0)) # Μπλε γεμάτο
-    cv2.fillPoly(overlay, [lane2], color=(0, 255, 0)) # Πράσινο γεμάτο
+    cv2.fillPoly(overlay, [lane1], color = (255, 0, 0)) # Μπλε γεμάτο
+    cv2.fillPoly(overlay, [lane2], color = (0, 255, 0)) # Πράσινο γεμάτο
 
     alpha = 0.4 # Συνδυασμός με το αρχικό image
     cv2.addWeighted(overlay, alpha, image_color, 1 - alpha, 0, dst = image_color)
 
-    # Προαιρετικά, κάνε και περίγραμμα για να φαίνεται καλύτερα
+    # Περίγραμμα για να φαίνεται καλύτερα!
     cv2.polylines(image_color, [lane1], isClosed = True, color = (0, 0, 0), thickness = 2)
     cv2.polylines(image_color, [lane2], isClosed = True, color = (0, 0, 0), thickness = 2)
+
+    return;
+
+def draw_road_convex_hull(image_color: MatLike, convex_hull: np.ndarray) -> None:
+    # Ζωγραφικήηη
+    overlay = image_color.copy()
+
+    convex_hull = np.array(convex_hull, dtype = np.int32)
+    cv2.fillPoly(overlay, [convex_hull], color = (0, 0, 255)) # Κόκκινο γεμάτο
+
+    alpha = 0.4 # Συνδυασμός με το αρχικό image
+    cv2.addWeighted(overlay, alpha, image_color, 1 - alpha, 0, dst = image_color)
+
+    # Περίγραμμα για να φαίνεται καλύτερα!
+    cv2.polylines(
+        image_color,
+        [convex_hull],
+        isClosed = True,
+        color = (0, 0, 0),
+        thickness = 2
+    )
 
     return;
 
@@ -362,18 +391,35 @@ def find_index_of_point(convex_hull: np.ndarray, point: Tuple[int, int]) -> int:
     
     return indices[0];
 
+def polygon_area(vertices: List[Tuple[float, float]]) -> float:
+    '''
+    Υπολογίζει το εμβαδόν ενός κλειστού πολυγώνου με τον τύπο του Shoelace.
+
+    https://en.wikipedia.org/wiki/Shoelace_formula
+    '''
+    n = len(vertices)
+    area = 0.
+
+    for i in range(n):
+        (x0, y0) = vertices[i]
+        (x1, y1) = vertices[(i+1) % n] # Κυκλικό!
+
+        area += (x0 * y1) - (x1 * y0)
+
+    return abs(area) / 2.;
+
 # --- Παράδειγμα χρήσης ---
 
 def main():
     base_dir = os.path.dirname(__file__)
 
-    for i in range(0, 10):
+    for i in range(10, 98):
         temp = os.path.join(
             base_dir,
             'data_road',
             'testing',
             'image_2',
-            f'um_00000{i}.png'
+            f'um_0000{i}.png'
         )
         img_file = os.path.abspath(temp)
 
@@ -385,12 +431,25 @@ def main():
             print(f"Η εικόνα {img_file} δεν βρέθηκε!")
             continue;
         
-        start = time()
-        (lane1, lane2) = my_road_is(image, image_color, method = 'grabcut_fast')
-        print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
+        try:
+            start = time()
+            (lane1, lane2, convex_hull) = my_road_is(
+                image,
+                image_color,
+                method = 'grabcut_fast'
+            )
+            print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
+        except:
+            print(f"Σφάλμα στην εικόνα {img_file}!")
 
+        (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
+        temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
         # Ζωγραφικήηη
-        draw_lanes(image_color, lane1, lane2)
+        if 0.5 < temp < 2.:
+            draw_lanes(image_color, lane1, lane2)
+        else:
+            print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
+            draw_road_convex_hull(image_color, convex_hull)
         plt.figure(figsize = (10, 6))
 
         # Πρέπει να γίνει μετατροπή σε RGB format, για να εμφανιστεί σωστά στο matplotlib!
