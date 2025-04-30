@@ -437,6 +437,31 @@ def polygon_area(vertices: List[Tuple[float, float]]) -> float:
 
     return abs(area) / 2.;
 
+def compute_c1_channel(image_color: np.ndarray) -> np.ndarray:
+    '''
+    Υπολογισμός του c1 καναλιού για την έγχρωμη εικόνα (BGR).
+    Το αποτέλεσμα είναι float32 και normalized μεταξύ [0, 1]!
+
+    c1(x, y) = arctan(R / max(G, B))
+
+    Paper:
+    Random-Walker Monocular Road Detection in
+    Adverse Conditions Using Automated
+    Spatiotemporal Seed Selection
+    '''
+    # BGR -> RGB
+    image_rgb = cv2.cvtColor(image_color, cv2.COLOR_BGR2RGB).astype(np.float32) + 1e-6
+    R = image_rgb[:, :, 0]
+    G = image_rgb[:, :, 1]
+    B = image_rgb[:, :, 2]
+
+    max_GB = np.maximum(G, B) + 1e-6  # Για αποφυγή διαίρεσης με το 0
+    c1 = np.arctan(R / max_GB)
+
+    c1_normalized = (c1 - c1.min()) / (c1.max() - c1.min()) # Κανονικοποίηση στο [0, 1]
+
+    return c1_normalized.astype(np.float32);
+
 # --- Παράδειγμα χρήσης ---
 
 def main():
@@ -455,6 +480,7 @@ def main():
         # Φορτώνουμε γκρι και έγχρωμη εικόνα!
         image = cv2.imread(img_file, cv2.IMREAD_GRAYSCALE)
         image_color = cv2.imread(img_file, cv2.IMREAD_COLOR) # Σε BGR format!
+        image_c1_channel = compute_c1_channel(image_color)
 
         if image is None or image_color is None:
             print(f"Η εικόνα {img_file} δεν βρέθηκε!")
@@ -464,8 +490,8 @@ def main():
             start = time()
             (lane1, lane2, convex_hull) = my_road_is(
                 image,
-                image_color,
-                method = 'random_walker'
+                image_c1_channel,
+                method = 'grabcut'
             )
             print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
 
