@@ -108,7 +108,7 @@ def apply_grabcut_fast(image: MatLike,
     )
 
     result_small = np.where((small_mask == 1) | (small_mask == 3), 255, 0).astype('uint8')
-    result_big = cv2.resize(result_small, (width, height), interpolation=cv2.INTER_NEAREST)
+    result_big = cv2.resize(result_small, (width, height), interpolation = cv2.INTER_NEAREST)
 
     return result_big;
 
@@ -122,12 +122,18 @@ def apply_random_walker(image: MatLike, mask: np.ndarray) -> np.ndarray:
       2 -> foreground
       0 -> unknown
     '''
-    labels = random_walker(image, mask, beta = 20000, mode = 'bf', tol = 1e-4)
-    # Όσο μεγαλύτερο το beta, τόσο καλύτερα!
+    (height, width) = image.shape
+    small_size = (160, 120) # Βάση του paper!
 
-    result = np.where(labels == 2, 255, 0).astype('uint8') # Όπου labels == 2 -> δρόμος!
+    small_image = cv2.resize(image, small_size, interpolation = cv2.INTER_LINEAR)
+    small_mask  = cv2.resize(mask, small_size, interpolation = cv2.INTER_NEAREST)
 
-    return result;
+    labels = random_walker(small_image, small_mask, beta = 100, mode = 'bf', tol = 1e-4)
+
+    result_small = np.where(labels == 2, 255, 0).astype('uint8') # Όπου labels == 2 -> δρόμος!
+    result_big = cv2.resize(result_small, (width, height), interpolation = cv2.INTER_NEAREST)
+
+    return result_big;
 
 def my_road_detection(image: MatLike,
                       image_color: MatLike,
@@ -166,7 +172,7 @@ def my_road_detection(image: MatLike,
         seeds[temp == 255] = 2 # Σίγουρα δρόμος, λόγω region growing!
         dilated = cv2.dilate((seeds == 2).astype(np.uint8), kernel, iterations = 6)
         seeds[(dilated == 1) & (seeds != 2)] = 0 # Unknown area!
-        mask = apply_random_walker(image, seeds)
+        mask = apply_random_walker(compute_c1_channel(image_color), seeds)
     else:
         raise ValueError(f"Άγνωστη μέθοδος: {method}");
 
@@ -437,7 +443,7 @@ def polygon_area(vertices: List[Tuple[float, float]]) -> float:
 
     return abs(area) / 2.;
 
-# Δοκιμάστηκε αλλά δεν βοήθησε — τα αποτελέσματα ήταν χειρότερα από το κλασικό grayscale...
+# Δοκιμάστηκε αλλά δεν βοήθησε — τα αποτελέσματα ήταν παρόμοια...
 def compute_c1_channel(image_color: np.ndarray) -> np.ndarray:
     '''
     Υπολογισμός του c1 καναλιού για την έγχρωμη εικόνα (BGR).
