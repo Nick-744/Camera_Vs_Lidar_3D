@@ -48,10 +48,10 @@ def main():
     model.load_state_dict(torch.load('my_road_model.pth', map_location = 'cpu', weights_only = True))
     model.eval()
 
-    image_path = abspath(join(base_path, '..', 'KITTI', 'data_road', 'testing', 'image_2')) # Για test, υπάρχει από:
-                                                                                            # um_000000.png  -> um_000095.png
-                                                                                            # umm_000000.png -> umm_000093.png
-                                                                                            # uu_000000.png  -> uu_000099.png
+    image_path = abspath(join(base_path, '..', 'data_road', 'testing', 'image_2')) # Για test, υπάρχει από:
+                                                                                   # um_000000.png  -> um_000095.png
+                                                                                   # umm_000000.png -> umm_000093.png
+                                                                                   # uu_000000.png  -> uu_000099.png
     for i in range(10, 15):
         image = cv2.cvtColor(cv2.imread(join(image_path, f'um_0000{i}.png')), cv2.COLOR_BGR2RGB)
         img = cv2.resize(image, my_model.model_input_size, interpolation = cv2.INTER_LINEAR)
