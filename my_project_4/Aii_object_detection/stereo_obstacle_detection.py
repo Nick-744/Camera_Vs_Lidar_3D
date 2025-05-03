@@ -28,7 +28,7 @@ def ransac_ground_removal(points: np.ndarray,
                           distance_threshold: float = 0.01,
                           ransac_n: int = 3,
                           num_iterations: int = 2000,
-                          show: bool = True) -> tuple:
+                          show: bool = False) -> tuple:
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
 
@@ -55,7 +55,7 @@ def ransac_ground_removal(points: np.ndarray,
 def cluster_obstacles_dbscan(points: np.ndarray,
                              eps: float = 0.2,
                              min_samples: int = 10,
-                             show: bool = True) -> np.ndarray:
+                             show: bool = False) -> np.ndarray:
     clustering = DBSCAN(
         eps = eps,
         min_samples = min_samples
@@ -280,8 +280,7 @@ def detect_obstacles(left_color: np.ndarray,
     pcd = point_cloud_from_disparity(
         disparity,
         calib,
-        left_color,
-        show = False
+        left_color
     )
     raw_points = np.asarray(pcd.points)
 
@@ -289,8 +288,7 @@ def detect_obstacles(left_color: np.ndarray,
         raw_points,
         distance_threshold = 0.02,
         ransac_n = 3,
-        num_iterations = 10000,
-        show = False
+        num_iterations = 10000
     )
     filtered_pts = filter_by_height(
         obstacle_pts,
@@ -302,8 +300,7 @@ def detect_obstacles(left_color: np.ndarray,
     labels = cluster_obstacles_dbscan(
         filtered_pts,
         eps = 0.3,
-        min_samples = 20,
-        show = False
+        min_samples = 20
     )
     clusters = group_clusters(filtered_pts, labels)
 
