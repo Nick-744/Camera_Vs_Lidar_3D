@@ -328,6 +328,7 @@ def detect_obstacles(left_color: np.ndarray,
 
 def main():
     base_dir = os.path.dirname(__file__)
+    dataset_type = 'training'
 
     for idx in range(10, 50):
         image_name = f'um_0000{idx}.png'
@@ -337,7 +338,7 @@ def main():
             '..',
             'KITTI',
             'data_road',
-            'training',
+            dataset_type,
             'image_2',
             image_name
         )
@@ -346,7 +347,7 @@ def main():
             '..',
             'KITTI',
             'data_road_right',
-            'training',
+            dataset_type,
             'image_3',
             image_name
         )
