@@ -36,13 +36,15 @@ def project_points_to_image(points, Tr_velo_to_cam, P2, image_shape):
     valid = cam_points[2, :] > 0.1
     cam_points = cam_points[:, valid]
 
-    pixels = P2 @ np.vstack([cam_points, np.ones((1, cam_points.shape[1]))])
+    pixels = P2 @ np.vstack(
+        [cam_points, np.ones((1, cam_points.shape[1]))]
+    )
     pixels /= pixels[2, :]
 
     u = np.round(pixels[0, :]).astype(int)
     v = np.round(pixels[1, :]).astype(int)
 
-    h, w = image_shape[:2]
+    (h, w) = image_shape[:2]
     mask = np.zeros((h, w), dtype=np.uint8)
     valid = (u >= 0) & (u < w) & (v >= 0) & (v < h)
     mask[v[valid], u[valid]] = 1
@@ -51,9 +53,9 @@ def project_points_to_image(points, Tr_velo_to_cam, P2, image_shape):
     mask = cv2.dilate(mask, kernel, iterations=2)
 
     # Keep largest connected component AFTER dilation
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+    (num_labels, labels, stats, _) = cv2.connectedComponentsWithStats(
         mask,
-        connectivity=8
+        connectivity = 8
     )
     if num_labels > 1:
         largest = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
@@ -88,6 +90,16 @@ def detect_ground_plane(points: np.ndarray,
         o3d.visualization.draw_geometries([ground, non_ground])
 
     return (np.asarray(ground.points), plane_model);
+
+def filter_points_near_plane(points, plane_model, max_dist=0.2):
+    a, b, c, d = plane_model
+    norm = np.sqrt(a**2 + b**2 + c**2)
+    distances = np.abs((points @ np.array([a, b, c]) + d) / norm)
+    return points[distances < max_dist]
+
+def filter_frontal_area(points, x_range=(-10, 10), y_range=(0, 30)):
+    x, y = points[:, 0], points[:, 1]
+    return points[(x > x_range[0]) & (x < x_range[1]) & (y > y_range[0]) & (y < y_range[1])]
 
 def main():
     base_dir = os.path.dirname(__file__)
@@ -131,9 +143,19 @@ def main():
 
         points = load_velodyne_bin(bin_path)
         image = cv2.imread(img_path)
-        (ground_points, _) = detect_ground_plane(
+        (ground_points_raw, plane_model) = detect_ground_plane(
             points,
             distance_threshold = 0.05
+        )
+        ground_points = filter_points_near_plane(
+            ground_points_raw,
+            plane_model,
+            max_dist=0.15
+        )
+        ground_points = filter_frontal_area(
+            ground_points,
+            x_range=(-8, 20),
+            y_range=(-2, 30)
         )
 
         road_mask = project_points_to_image(
