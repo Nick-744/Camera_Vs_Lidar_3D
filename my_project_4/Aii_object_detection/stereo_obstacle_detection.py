@@ -24,11 +24,11 @@ def parse_kitti_calib(file_path: str) -> dict:
 
     return calib;
 
-def ransac_ground_removal(points: np.ndarray,
+def ransac_ground_removal(points:             np.ndarray,
                           distance_threshold: float = 0.01,
-                          ransac_n: int = 3,
-                          num_iterations: int = 2000,
-                          show: bool = False) -> tuple:
+                          ransac_n:           int = 3,
+                          num_iterations:     int = 2000,
+                          show:               bool = False) -> tuple:
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
 
@@ -52,10 +52,10 @@ def ransac_ground_removal(points: np.ndarray,
         plane_model
     );
 
-def cluster_obstacles_dbscan(points: np.ndarray,
-                             eps: float = 0.2,
+def cluster_obstacles_dbscan(points:      np.ndarray,
+                             eps:         float = 0.2,
                              min_samples: int = 10,
-                             show: bool = False) -> np.ndarray:
+                             show:        bool = False) -> np.ndarray:
     clustering = DBSCAN(
         eps = eps,
         min_samples = min_samples
@@ -74,10 +74,12 @@ def cluster_obstacles_dbscan(points: np.ndarray,
 
     return labels;
 
-def point_cloud_from_disparity(disparity,
-                               calib,
-                               left_image_color,
-                               show = False) -> o3d.geometry.PointCloud:
+def point_cloud_from_disparity(
+    disparity:        np.ndarray,
+    calib:            dict,
+    left_image_color: np.ndarray,
+    show:             bool = False
+) -> o3d.geometry.PointCloud:
     (f, cx, cy, Tx) = (
         calib['f'],
         calib['cx'],
@@ -108,9 +110,9 @@ def point_cloud_from_disparity(disparity,
     return pcd;
 
 def filter_by_height(points: np.ndarray,
-                     plane: tuple,
-                     min_h: float = 0.15,
-                     max_h: float = 2.) -> np.ndarray:
+                     plane:  tuple,
+                     min_h:  float = 0.15,
+                     max_h:  float = 2.) -> np.ndarray:
     (a, b, c, d) = plane
     normal = np.linalg.norm([a, b, c])
     filtered = []
@@ -121,7 +123,7 @@ def filter_by_height(points: np.ndarray,
 
     return np.array(filtered);
 
-def group_clusters(points, labels):
+def group_clusters(points: np.ndarray, labels: np.ndarray) -> dict:
     clusters = {}
     for (pt, label) in zip(points, labels):
         if label == -1:
@@ -130,9 +132,9 @@ def group_clusters(points, labels):
 
     return {k: np.array(v) for k, v in clusters.items()};
 
-def project_to_image(clusters: dict,
-                     calib: dict,
-                     shape: tuple,
+def project_to_image(clusters:     dict,
+                     calib:        dict,
+                     shape:        tuple,
                      min_box_area: int = 30) -> list:
     (f, cx, cy) = calib['f'], calib['cx'], calib['cy']
     (h, w) = shape[:2]
@@ -164,7 +166,7 @@ def project_to_image(clusters: dict,
 
     return boxes;
 
-def draw_bboxes(img: np.ndarray,
+def draw_bboxes(img:   np.ndarray,
                 boxes: list,
                 color: tuple = (0, 255, 0)) -> None:
     for (x1, y1, x2, y2) in boxes:
@@ -172,7 +174,7 @@ def draw_bboxes(img: np.ndarray,
     
     return;
 
-def compute_disparity(left_gray: np.ndarray,
+def compute_disparity(left_gray:  np.ndarray,
                       right_gray: np.ndarray) -> np.ndarray:
     window_size = 9
     num_disp    = 16 * 12 # Πρέπει να είναι πολλαπλάσιο του 16!
@@ -198,9 +200,9 @@ def compute_disparity(left_gray: np.ndarray,
 
     return disparity;
 
-def filter_boxes_by_road_mask(boxes: list,
-                              road_mask: np.ndarray,
-                              threshold: float = 0.2,
+def filter_boxes_by_road_mask(boxes:              list,
+                              road_mask:          np.ndarray,
+                              threshold:          float = 0.2,
                               dilate_kernel_size: int = 11) -> list:
     '''
     Κρατά μόνο τα boxes που επικαλύπτονται με τη
@@ -232,8 +234,8 @@ def filter_boxes_by_road_mask(boxes: list,
 
     return filtered_boxes;
 
-def ground_mask_from_points(ground_pts: np.ndarray,
-                            calib: dict,
+def ground_mask_from_points(ground_pts:  np.ndarray,
+                            calib:       dict,
                             image_shape: tuple,
                             blur_kernel: int = 15) -> np.ndarray:
     (f, cx, cy) = (calib['f'], calib['cx'], calib['cy'])
@@ -273,14 +275,16 @@ def ground_mask_from_points(ground_pts: np.ndarray,
     return (binary > 0.1).astype(np.uint8);
 
 def detect_obstacles(left_color: np.ndarray,
-                     left_gray: np.ndarray,
+                     left_gray:  np.ndarray,
                      right_gray: np.ndarray,
-                     calib: dict) -> tuple:
+                     calib:      dict,
+                     debug:      bool = False) -> tuple:
     disparity = compute_disparity(left_gray, right_gray)
     pcd = point_cloud_from_disparity(
         disparity,
         calib,
-        left_color
+        left_color,
+        show = debug
     )
     raw_points = np.asarray(pcd.points)
 
@@ -288,7 +292,8 @@ def detect_obstacles(left_color: np.ndarray,
         raw_points,
         distance_threshold = 0.02,
         ransac_n = 3,
-        num_iterations = 10000
+        num_iterations = 10000,
+        show = debug
     )
     filtered_pts = filter_by_height(
         obstacle_pts,
@@ -300,7 +305,8 @@ def detect_obstacles(left_color: np.ndarray,
     labels = cluster_obstacles_dbscan(
         filtered_pts,
         eps = 0.3,
-        min_samples = 20
+        min_samples = 20,
+        show = debug
     )
     clusters = group_clusters(filtered_pts, labels)
 
