@@ -2,77 +2,40 @@ import os
 import cv2
 import numpy as np
 import open3d as o3d
+from time import time
 
-def load_velodyne_bin(bin_path: str) -> np.ndarray:
-    """
-    Load a KITTI .bin Velodyne point cloud file (Nx4) → return Nx3 (XYZ).
-    """
-    points = np.fromfile(bin_path, dtype = np.float32).reshape(-1, 4)
-
-    return points[:, :3];
-
-def load_calibration(calib_path: str) -> tuple:
-    calib = {}
-    with open(calib_path, 'r') as f:
-        for line in f:
-            if ':' in line:
-                key, value = line.strip().split(':', 1)
-                calib[key] = np.array(
-                    [float(x) for x in value.strip().split()]
-                )
-
-    Tr_velo_to_cam = calib['Tr_velo_to_cam'].reshape(3, 4)
-    Tr_velo_to_cam = np.vstack([Tr_velo_to_cam, [0, 0, 0, 1]])
-
-    P2 = calib['P2'].reshape(3, 4)
-
-    return (Tr_velo_to_cam, P2);
-
-def project_points_to_image(points, Tr_velo_to_cam, P2, image_shape):
-    points_hom = np.hstack([points, np.ones((points.shape[0], 1))])
-    cam_points = Tr_velo_to_cam @ points_hom.T
-    cam_points = cam_points[:3, :]
-
-    valid = cam_points[2, :] > 0.1
-    cam_points = cam_points[:, valid]
-
-    pixels = P2 @ np.vstack(
-        [cam_points, np.ones((1, cam_points.shape[1]))]
+def filter_visible_points(pcd:             np.ndarray,
+                          Tr_velo_to_cam:  np.ndarray,
+                          P2:              np.ndarray,
+                          image_shape:     tuple) -> np.ndarray:
+    '''
+    Φιλτράρει το pcd έτσι ώστε να επεξεργαστούμε μόνο τα
+    ορατά από την κάμερα σημεία. Επιστρέφει το ορατό pcd.
+    '''
+    (_, u, v, mask_depth) = project_lidar_to_image(
+        pcd,
+        Tr_velo_to_cam,
+        P2
     )
-    pixels /= pixels[2, :]
+    pts_kept = pcd[mask_depth]
 
-    u = np.round(pixels[0, :]).astype(int)
-    v = np.round(pixels[1, :]).astype(int)
-
+    # Φιλτράρουμε τα σημεία που είναι της κάμερας (Field of View)
     (h, w) = image_shape[:2]
-    mask = np.zeros((h, w), dtype=np.uint8)
-    valid = (u >= 0) & (u < w) & (v >= 0) & (v < h)
-    mask[v[valid], u[valid]] = 1
+    fov_mask = (u >= 0) & (u < w) & (v >= 0) & (v < h)
 
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.dilate(mask, kernel, iterations=2)
+    return pts_kept[fov_mask];
 
-    # Keep largest connected component AFTER dilation
-    (num_labels, labels, stats, _) = cv2.connectedComponentsWithStats(
-        mask,
-        connectivity = 8
-    )
-    if num_labels > 1:
-        largest = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
-        mask = (labels == largest).astype(np.uint8)
-
-    # mask = cv2.GaussianBlur(mask.astype(np.float32), (15, 15), 0)
-    
-    return (mask > 0.1).astype(np.uint8) * 255;
-
-def detect_ground_plane(points: np.ndarray,
+def detect_ground_plane(points:             np.ndarray,
                         distance_threshold: float = 0.2,
-                        ransac_n: int = 3,
-                        num_iterations: int = 1000,
-                        show: bool = False) -> tuple:
-    """
-    Detect the road (ground) using RANSAC plane fitting.
-    """
+                        ransac_n:           int = 3,
+                        num_iterations:     int = 1000,
+                        show:               bool = False) -> tuple:
+    '''
+    Εύρεση του εδάφους/δρόμου του point cloud με RANSAC.
+
+    Επιστρέφει τα σημεία του δρόμου και 1 tuple (a, b, c, d)
+    που ορίζει το επίπεδο που βρέθηκε με RANSAC.
+    '''
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
 
@@ -91,15 +54,122 @@ def detect_ground_plane(points: np.ndarray,
 
     return (np.asarray(ground.points), plane_model);
 
-def filter_points_near_plane(points, plane_model, max_dist=0.2):
-    a, b, c, d = plane_model
-    norm = np.sqrt(a**2 + b**2 + c**2)
-    distances = np.abs((points @ np.array([a, b, c]) + d) / norm)
-    return points[distances < max_dist]
+def project_points_to_image(pcd:         np.ndarray,
+                            Tr_velo_to_cam: np.ndarray,
+                            P2:             np.ndarray,
+                            image_shape:    tuple) -> np.ndarray:
+    '''
+    Προβολή του pcd στην εικόνα με χρήση του camera
+    projection matrix P2. Ίδια λογική λειτουργίας με το
+    filter_visible_points, απλά τώρα επιστρέφει μάσκα!
+    '''
+    (_, u, v, _) = project_lidar_to_image(
+        pcd,
+        Tr_velo_to_cam,
+        P2
+    )
 
-def filter_frontal_area(points, x_range=(-10, 10), y_range=(0, 30)):
-    x, y = points[:, 0], points[:, 1]
-    return points[(x > x_range[0]) & (x < x_range[1]) & (y > y_range[0]) & (y < y_range[1])]
+    (h, w) = image_shape[:2]
+    valid = (u >= 0) & (u < w) & (v >= 0) & (v < h)
+
+    # Δημιουργία μάσκας:
+    mask = np.zeros((h, w), dtype = np.uint8)
+    mask[v[valid], u[valid]] = 1
+
+    # Morphological επεξεργασία για βελτίωση της μάσκας!
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.dilate(mask, kernel, iterations = 2)
+    (num_labels, labels, stats, _) = cv2.connectedComponentsWithStats(
+        mask,
+        connectivity = 8
+    )
+    if num_labels > 1:
+        largest = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+        mask = (labels == largest).astype(np.uint8)
+    
+    return (mask > 0.1).astype(np.uint8) * 255;
+
+def my_road_from_pcd_is(pcd:            np.ndarray,
+                        Tr_velo_to_cam: np.ndarray,
+                        P2:             np.ndarray,
+                        image_shape:    tuple) -> np.ndarray:
+    ''' Επιστρέφει τη μάσκα του δρόμου από το pcd/LiDAR. '''
+    visible_points = filter_visible_points(
+        pcd,
+        Tr_velo_to_cam,
+        P2,
+        image_shape
+    )
+    
+    (ground_points, _) = detect_ground_plane(
+        visible_points,
+        distance_threshold = 0.02,
+        num_iterations = 10000
+    )
+
+    road_mask = project_points_to_image(
+        ground_points,
+        Tr_velo_to_cam,
+        P2,
+        image_shape
+    )
+
+    return road_mask;
+
+# ----- Helpers -----
+def project_lidar_to_image(points:         np.ndarray,
+                           Tr_velo_to_cam: np.ndarray,
+                           P2:             np.ndarray) -> tuple:
+    ''' Μετατρέπει 3D σημεία (pcd) από LiDAR -> camera -> pixels! '''
+    # LiDAR -> camera frame (με χρήση Homogeneous coordinates)
+    pts_h = np.c_[points, np.ones(points.shape[0])] # N x 4
+    cam = (Tr_velo_to_cam @ pts_h.T)[:3]            # 3 επειδή x, y, z
+    depth_mask = cam[2] > 0.1
+    cam = cam[:, depth_mask] # Πολύ κοντά στην κάμερα
+
+    # Camera frame -> pixels
+    '''
+    P2: 3 x 4 camera projection matrix του KITTI calibration,
+    που μετατρέπει 3D camera coords σε 2D image pixels!
+    '''
+    pixels = P2 @ np.vstack([cam, np.ones(cam.shape[1])])
+    pixels /= pixels[2] # Από homogeneous σε Cartesian coordinates
+
+    u = np.round(pixels[0]).astype(int)
+    v = np.round(pixels[1]).astype(int)
+
+    return (cam, u, v, depth_mask);
+
+# ----- I/O -----
+def load_velodyne_bin(bin_path: str) -> np.ndarray:
+    '''
+    Φορτώνει το Velodyne pcd .bin αρχείο (του KITTI)
+    και επιστρέφει τα σημεία του.
+    '''
+    points = np.fromfile(bin_path, dtype = np.float32).reshape(-1, 4)
+
+    return points[:, :3];
+
+def load_calibration(calib_path: str) -> tuple:
+    '''
+    Φορτώνει το calibration .txt αρχείο του KITTI
+    και επιστρέφει το Tr_velo_to_cam και P2.
+    '''
+    calib = {}
+    with open(calib_path, 'r') as f:
+        for line in f:
+            if ':' in line:
+                key, value = line.strip().split(':', 1)
+                calib[key] = np.array(
+                    [float(x) for x in value.strip().split()]
+                )
+
+    Tr_velo_to_cam = calib['Tr_velo_to_cam'].reshape(3, 4)
+    Tr_velo_to_cam = np.vstack([Tr_velo_to_cam, [0, 0, 0, 1]])
+
+    P2 = calib['P2'].reshape(3, 4)
+
+    return (Tr_velo_to_cam, P2);
 
 def main():
     base_dir = os.path.dirname(__file__)
@@ -133,44 +203,31 @@ def main():
             'calib',
             f'{general_name_file}.txt'
         )
-        if (not os.path.exists(bin_path)) or \
-            (not os.path.exists(img_path)) or \
-            (not os.path.exists(calib_path)):
+        if not (os.path.isfile(bin_path) and \
+                os.path.isfile(img_path) and \
+                os.path.isfile(calib_path)):
             print(f'Πρόβλημα με το {general_name_file}')
             continue;
         
-        Tr_velo_to_cam, P2 = load_calibration(calib_path)
-
+        (Tr_velo_to_cam, P2) = load_calibration(calib_path)
+        image  = cv2.imread(img_path)
         points = load_velodyne_bin(bin_path)
-        image = cv2.imread(img_path)
-        (ground_points_raw, plane_model) = detect_ground_plane(
-            points,
-            distance_threshold = 0.05
-        )
-        ground_points = filter_points_near_plane(
-            ground_points_raw,
-            plane_model,
-            max_dist=0.15
-        )
-        ground_points = filter_frontal_area(
-            ground_points,
-            x_range=(-8, 20),
-            y_range=(-2, 30)
-        )
 
-        road_mask = project_points_to_image(
-            ground_points,
+        start = time()
+        road_mask = my_road_from_pcd_is(
+            points,
             Tr_velo_to_cam,
             P2,
             image.shape
         )
+        print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
         # Ζωγραφικηηή!
-        green_mask = np.zeros_like(image)
-        green_mask[road_mask == 255] = [0, 255, 0]
-        overlay = cv2.addWeighted(image, 0.7, green_mask, 0.3, 0)
+        mask_colored = np.zeros_like(image)
+        mask_colored[road_mask == 255] = [0, 0, 255]
+        overlay = cv2.addWeighted(image, 0.6, mask_colored, 0.4, 0)
 
-        cv2.imshow("Road Mask Overlay", overlay)
+        cv2.imshow("Μάσκα από LiDAR", overlay)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
