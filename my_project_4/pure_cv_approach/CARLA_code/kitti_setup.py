@@ -27,15 +27,12 @@ import carla
 from scipy.spatial.transform import Rotation as R
 
 __all__ = [
-    "KITTI_ROOT",
     "KittiSetup",
 ]
 
 # ---------------------------------------------------------------------------
 # Configuration constants (taken from the official KITTI sensor reference)
 # ---------------------------------------------------------------------------
-
-KITTI_ROOT = Path("KITTI_Dataset_CARLA")
 
 # Image size and intrinsics for the rectified colour cameras (PNG 12‑bit → 8‑bit)
 IMG_WIDTH = 1392
@@ -116,10 +113,9 @@ def _carla_transform_to_matrix(tr: carla.Transform) -> np.ndarray:
 class KittiSetup:
     """Spawns the KITTI sensor rig on a *vehicle* inside a CARLA *world*."""
 
-    def __init__(self, world: carla.World, vehicle: carla.Actor, output: Path | str = KITTI_ROOT):
+    def __init__(self, world: carla.World, vehicle: carla.Actor):
         self.world = world
         self.vehicle = vehicle
-        self.output = Path(output)
         self.bp_library = self.world.get_blueprint_library()
         self.sensors: Dict[str, carla.Actor] = {}
 
@@ -145,7 +141,6 @@ class KittiSetup:
 
     def spawn(self) -> Dict[str, carla.Actor]:
         """Spawn LiDAR + stereo RGB cameras and return a dict mapping names to actors."""
-        self.output.mkdir(parents=True, exist_ok=True)
         self._spawn_lidar()
         self._spawn_camera("cam_left", _CAM_LEFT_POSE)
         self._spawn_camera("cam_right", _CAM_RIGHT_POSE)
