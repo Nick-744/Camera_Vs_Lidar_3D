@@ -67,7 +67,7 @@ def cluster_obstacles_dbscan(points:      np.ndarray,
         pcd.points = o3d.utility.Vector3dVector(points)
 
         colors = plt.get_cmap("tab20")(labels % 20)[:, :3] # Color map
-        colors[labels < 0] = [0, 0, 0]  # noise = black
+        colors[labels < 0] = [0, 0, 0] # noise = black
         pcd.colors = o3d.utility.Vector3dVector(colors)
 
         o3d.visualization.draw_geometries([pcd])
@@ -142,13 +142,13 @@ def project_to_image(clusters:     dict,
 
     for (_, cluster) in clusters.items():
         uvs = []
-        for x, y, z in cluster:
+        for (x, y, z) in cluster:
             if not (0.1 < z < 40):
                 continue;
             (u, v) = ((f * x / z) + cx, (f * y / z) + cy)
             if not np.isfinite(u) or not np.isfinite(v):
                 continue;
-            u, v = int(round(u)), int(round(v))
+            (u, v) = (int(round(u)), int(round(v)))
             if (0 <= u < w) and (0 <= v < h):
                 uvs.append((u, v))
 
@@ -177,7 +177,7 @@ def draw_bboxes(img:   np.ndarray,
 def compute_disparity(left_gray:  np.ndarray,
                       right_gray: np.ndarray) -> np.ndarray:
     window_size = 9
-    num_disp    = 16 * 12 # Πρέπει να είναι πολλαπλάσιο του 16!
+    num_disp    = 16 * 6 # Πρέπει να είναι πολλαπλάσιο του 16!
 
     stereo = cv2.StereoSGBM_create(
         minDisparity      = 0,
@@ -193,7 +193,10 @@ def compute_disparity(left_gray:  np.ndarray,
         mode              = cv2.STEREO_SGBM_MODE_SGBM_3WAY
     )
 
-    disparity = stereo.compute(left_gray, right_gray).astype(np.float32) / 16.0
+    disparity = stereo.compute(
+        left_gray,
+        right_gray
+    ).astype(np.float32) / 16.
     
     # Εξασφαλίζουμε ότι το disparity είναι θετικό
     disparity[disparity < 0] = 0
@@ -239,15 +242,15 @@ def ground_mask_from_points(ground_pts:  np.ndarray,
                             image_shape: tuple,
                             blur_kernel: int = 15) -> np.ndarray:
     (f, cx, cy) = (calib['f'], calib['cx'], calib['cy'])
-    h, w = image_shape[:2]
-    mask = np.zeros((h, w), dtype=np.uint8)
+    (h, w) = image_shape[:2]
+    mask = np.zeros((h, w), dtype = np.uint8)
 
-    for x, y, z in ground_pts:
+    for (x, y, z) in ground_pts:
         if not (0.1 < z < 40):
-            continue
+            continue;
         u = int(round((f * x / z) + cx))
         v = int(round((f * y / z) + cy))
-        if 0 <= u < w and 0 <= v < h:
+        if (0 <= u < w) and (0 <= v < h):
             mask[v, u] = 1
 
     # Κυρίως λόγω θορύβου
@@ -274,11 +277,67 @@ def ground_mask_from_points(ground_pts:  np.ndarray,
     
     return (binary > 0.1).astype(np.uint8);
 
-def detect_obstacles(left_color: np.ndarray,
-                     left_gray:  np.ndarray,
-                     right_gray: np.ndarray,
-                     calib:      dict,
-                     debug:      bool = False) -> tuple:
+def is_obstacle_on_road(cluster_points: np.ndarray,
+                        ground_points:  np.ndarray,
+                        plane_model:    tuple,
+                        percentage:     float = 1.,
+                        xy_margin:      float = 0.) -> bool:
+    '''
+    Ελέγχει αν το cluster είναι πάνω στον δρόμο (με 3D επεξεργασία):
+    - Προβάλλει τα σημεία του cluster πάνω στο επίπεδο του δρόμου.
+    - Υπολογίζει αν βρίσκονται εντός των ορίων XZ των ground
+      points, με περιθώριο.
+    '''
+    (a, b, c, d) = plane_model
+    n = np.array([a, b, c])
+    n_norm = np.linalg.norm(n)
+    if n_norm == 0:
+        return False;
+    
+    n = n / n_norm
+
+    # Όρια δρόμου στο X-Z επίπεδο
+    ground_xz = ground_points[:, [0, 2]]
+    (min_x, max_x) = (ground_xz[:, 0].min(), ground_xz[:, 0].max())
+    (min_z, max_z) = (ground_xz[:, 1].min(), ground_xz[:, 1].max())
+
+    projected = []
+    for p in cluster_points:
+        # Υπολογισμός προβολής
+        dist_to_plane = np.dot(n, p) + d
+        p_proj = p - dist_to_plane * n
+        projected.append(p_proj[[0, 2]]) # Κρατάμε ΜΟΝΟ X, Z
+    projected = np.array(projected)
+
+    # Αριθμός σημείων (cluster) που είναι εντός του δρόμου/ορίου
+    in_bounds = np.logical_and.reduce((
+        projected[:, 0] >= (min_x - xy_margin),
+        projected[:, 0] <= (max_x + xy_margin),
+        projected[:, 1] >= (min_z - xy_margin),
+        projected[:, 1] <= (max_z + xy_margin)
+    ))
+
+    ratio = np.count_nonzero(in_bounds) / len(projected)
+
+    return ratio >= percentage;
+
+def detect_obstacles(left_color:       np.ndarray,
+                     left_gray:        np.ndarray,
+                     right_gray:       np.ndarray,
+                     calib:            dict,
+                     road_filter_mode: str = '2d_mask',
+                     debug:            bool = False) -> tuple:
+    '''
+    Συνδιασμός όλων των βημάτων για την ανίχνευση εμποδίων!
+
+    - road_filter_mode: '2d_mask' ή '3d_plane'. Γενικά, το 2d_mask
+                        δουλεύει καλύτερα/γρηγορότερα.
+
+    Σημείωση: Η σμίκρυνση της ανάλυσης των εικόνων πριν τον
+              υπολογισμό του disparity δεν οδηγεί απαραίτητα
+              σε εξίσου καλά αποτελέσματα και σε ορισμένες
+              περιπτώσεις μπορεί να μην είναι καν πιο γρήγορη!
+    '''
     disparity = compute_disparity(left_gray, right_gray)
     pcd = point_cloud_from_disparity(
         disparity,
@@ -292,7 +351,7 @@ def detect_obstacles(left_color: np.ndarray,
         raw_points,
         distance_threshold = 0.02,
         ransac_n = 3,
-        num_iterations = 10000,
+        num_iterations = 2000,
         show = debug
     )
     filtered_pts = filter_by_height(
@@ -310,6 +369,12 @@ def detect_obstacles(left_color: np.ndarray,
     )
     clusters = group_clusters(filtered_pts, labels)
 
+    if road_filter_mode == '3d_plane':
+        clusters = {
+            i: cluster for (i, cluster) in clusters.items()
+            if is_obstacle_on_road(cluster, ground_pts, plane)
+        }
+
     boxes = project_to_image(
         clusters,
         calib,
@@ -318,17 +383,19 @@ def detect_obstacles(left_color: np.ndarray,
     )
 
     # Φιλτράρισμα boxes με βάση road mask!
-    road_mask = ground_mask_from_points(
-        ground_pts,
-        calib,
-        left_color.shape
-    )
-    boxes = filter_boxes_by_road_mask(
-        boxes,
-        road_mask,
-        threshold = 0.04,
-        dilate_kernel_size = 11
-    )
+    road_mask = None
+    if road_filter_mode == '2d_mask':
+        road_mask = ground_mask_from_points(
+            ground_pts,
+            calib,
+            left_color.shape
+        )
+        boxes = filter_boxes_by_road_mask(
+            boxes,
+            road_mask,
+            threshold = 0.04,
+            dilate_kernel_size = 11
+        )
 
     return (boxes, road_mask);
 
@@ -341,7 +408,7 @@ def main():
 
         left_path = os.path.join(
             base_dir,
-            '..',
+            '..', '..',
             'KITTI',
             'data_road',
             dataset_type,
@@ -350,7 +417,7 @@ def main():
         )
         right_path = os.path.join(
             base_dir,
-            '..',
+            '..', '..',
             'KITTI',
             'data_road_right',
             dataset_type,
