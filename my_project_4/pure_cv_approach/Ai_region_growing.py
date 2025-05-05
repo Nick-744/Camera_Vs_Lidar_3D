@@ -476,6 +476,7 @@ def main():
     for i in range(0, 10):
         temp = os.path.join(
             base_dir,
+            '..',
             'KITTI',
             'data_road',
             'testing',
