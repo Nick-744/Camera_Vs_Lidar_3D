@@ -23,3 +23,10 @@ https://arxiv.org/pdf/2501.07245v1
 https://arxiv.org/pdf/2007.10743
 https://github.com/jamohile/stereoscopic-point-clouds?tab=readme-ov-file
 https://medium.com/analytics-vidhya/depth-sensing-and-3d-reconstruction-512ed121aa60
+
+Random)
+https://github.com/jedeschaud/kitti_carla_simulator
+
+
+
+

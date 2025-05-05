@@ -137,6 +137,7 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
                         Tr_velo_to_cam: np.ndarray,
                         P2:             np.ndarray,
                         image_shape:    tuple,
+                        debug:          bool = False,
                         apply_filters:  bool = False) -> tuple:
     '''
     Επιστρέφει τη μάσκα του δρόμου που βρήκε από το pcd/LiDAR,
@@ -148,11 +149,14 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
         P2,
         image_shape
     )
+    if debug:
+        print(f'Ορατά σημεία: {visible_points.shape[0]}')
     
     (ground_points, plane) = detect_ground_plane(
         visible_points,
         distance_threshold = 0.02,
-        num_iterations = 10000
+        num_iterations = 10000,
+        show = debug
     )
 
     # Φίλτρα:
