@@ -159,36 +159,6 @@ class KittiSetup:
         self.sensors.clear()
 
     # ------------------------------------------------------------------
-    # Calibration helpers
-    # ------------------------------------------------------------------
-
-    def write_calibration(self, frame_id: int | str = "000000") -> None:
-        """Write a KITTI‑formatted *calib* txt into ``output/calib``."""
-        calib_dir = self.output / "calib"
-        calib_dir.mkdir(parents=True, exist_ok=True)
-
-        # Rectified camera projection matrices (baseline encoded as ±tx)
-        tx_left = 0.0
-        tx_right = -FOCAL_LENGTH * BASELINE
-        P0 = _kitti_projection_matrix(tx_left)
-        P1 = _kitti_projection_matrix(tx_right)
-
-        # Identity rectification matrix (R0_rect) as in KITTI raw → odometry
-        R0_rect = np.eye(3, dtype=np.float32)
-
-        # LiDAR → cam0 rigid transform (Tr_velo_to_cam) in KITTI coords
-        Tr_velo_to_cam = self._lidar_to_cam0()
-
-        def _fmt(mat: np.ndarray) -> str:
-            return " ".join(map(lambda x: f"{x:.6f}", mat.flatten()))
-
-        with open(calib_dir / f"{str(frame_id).zfill(6)}.txt", "w") as fh:
-            fh.write(f"P0: {_fmt(P0)}\n")
-            fh.write(f"P1: {_fmt(P1)}\n")
-            fh.write(f"R0_rect: {_fmt(R0_rect)}\n")
-            fh.write(f"Tr_velo_to_cam: {_fmt(Tr_velo_to_cam)}\n")
-
-    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

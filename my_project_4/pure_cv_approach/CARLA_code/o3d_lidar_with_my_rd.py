@@ -138,10 +138,7 @@ def make_lidar_callback(point_list, lidar, camera,
 
             # --- LiDAR → CAMERA optical frame ----------------------------------
             pts_cam = (Tr_velo_to_cam @ np.c_[pts_raw, np.ones(len(pts_raw))].T)[:3].T
-            pts_cv  = np.empty_like(pts_cam)          # CARLA → OpenCV axis swap
-            pts_cv[:, 0] =  pts_cam[:, 1]             #  +X_cam  = +Y_carla
-            pts_cv[:, 1] = -pts_cam[:, 2]             #  +Y_cam  = −Z_carla
-            pts_cv[:, 2] =  pts_cam[:, 0]             #  +Z_cam  = +X_carla
+            pts_cv  = pts_cam
 
             # -------------------------------------------------------------------
             road_mask, road_pts, _ = my_road_from_pcd_is(
@@ -240,7 +237,7 @@ def main():
             fps = 1.0 / (now - t_prev).total_seconds()
             t_prev = now
             frame += 1
-            # print(f"\rFPS: {fps:5.2f}", end='')
+            print(f"\rFPS: {fps:5.2f}", end='')
 
     except KeyboardInterrupt:
         print('\n[INFO] User interruption – exiting …')
