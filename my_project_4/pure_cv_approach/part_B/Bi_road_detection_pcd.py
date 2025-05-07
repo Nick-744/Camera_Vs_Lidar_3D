@@ -5,13 +5,15 @@ import open3d as o3d
 from time import time
 from scipy.spatial import cKDTree
 
-def filter_visible_points(pcd:             np.ndarray,
-                          Tr_velo_to_cam:  np.ndarray,
-                          P2:              np.ndarray,
-                          image_shape:     tuple) -> np.ndarray:
+def filter_visible_points(pcd:            np.ndarray,
+                          Tr_velo_to_cam: np.ndarray,
+                          P2:             np.ndarray,
+                          image_shape:    tuple) -> np.ndarray:
     '''
     Φιλτράρει το pcd έτσι ώστε να επεξεργαστούμε μόνο τα
     ορατά από την κάμερα σημεία. Επιστρέφει το ορατό pcd.
+
+    Witcher 3 type of optimization sh*t!
     '''
     (_, u, v, mask_depth) = project_lidar_to_image(
         pcd,
@@ -55,7 +57,7 @@ def detect_ground_plane(points:             np.ndarray,
 
     return (np.asarray(ground.points), plane_model);
 
-def project_points_to_image(pcd:         np.ndarray,
+def project_points_to_image(pcd:            np.ndarray,
                             Tr_velo_to_cam: np.ndarray,
                             P2:             np.ndarray,
                             image_shape:    tuple) -> np.ndarray:

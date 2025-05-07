@@ -431,6 +431,9 @@ def my_road_is(
         method,
         ml_model
     )
+    if method == 'ml':
+        return ([], [], road_mask);
+
     corners = find_mask_vertices(largest_contour)
     convex_hull = CH_graham_scan(np.array(corners))
     middle_white_line = lane_separation(image, road_mask) # Ή κίτρινη...
@@ -566,7 +569,8 @@ def compute_c1_channel(image_color: np.ndarray) -> np.ndarray:
 
 def main():
     base_dir = os.path.dirname(__file__)
-    model = DeepLabRoadSegmentor()
+    model = None #DeepLabRoadSegmentor()
+    METHOD = 'grabcut_fast'
 
     for i in range(0, 10):
         temp = os.path.join(
@@ -584,32 +588,39 @@ def main():
         image = cv2.imread(img_file, cv2.IMREAD_GRAYSCALE)
         image_color = cv2.imread(img_file, cv2.IMREAD_COLOR) # Σε BGR format!
 
-        if image is None or image_color is None:
+        if (image is None) or (image_color is None):
             print(f"Η εικόνα {img_file} δεν βρέθηκε!")
             continue;
         
-        #try:
-        start = time()
-        (lane1, lane2, convex_hull) = my_road_is(
-            image,
-            image_color,
-            method = 'ml',
-            ml_model = model
-        )
-        print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
+        try:
+            start = time()
+            (lane1, lane2, convex_hull) = my_road_is(
+                image,
+                image_color,
+                method = METHOD,
+                ml_model = model
+            )
+            print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
 
-        (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
-        temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
+            if METHOD == 'ml':
+                mask = image_color.copy()
+                mask[convex_hull > 0] = (255, 0, 0)
+                cv2.addWeighted(image_color, 0.6, mask, 0.4, 0, dst = image_color)
+                a = 1 / 0 # Για να γίνει break το try-except!
 
-        # Ζωγραφικήηη
-        if temp < 4.1:
-            draw_lanes(image_color, lane1, lane2)
-        else:
-            print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
-            draw_road_convex_hull(image_color, convex_hull)
-        # except Exception as e:
-        #     print(f"Σφάλμα στην εικόνα {img_file}: {e}!")
-        #     continue;
+            (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
+            temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
+
+            # Ζωγραφικήηη
+            if temp < 4.1:
+                draw_lanes(image_color, lane1, lane2)
+            else:
+                print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
+                draw_road_convex_hull(image_color, convex_hull)
+        except Exception as e:
+            if METHOD != 'ml':
+                print(f"Σφάλμα στην εικόνα {img_file}: {e}!")
+                continue;
 
         plt.figure(figsize = (10, 6))
 
