@@ -120,29 +120,31 @@ def make_lidar_callback(point_list, lidar, camera,
     cam_buf: dict[str, np.ndarray | None] = {"rgb": None}
 
     def cam_cb(img):
-        cam_buf["rgb"] = np.frombuffer(img.raw_data, np.uint8).reshape(img.height, img.width, 4)[:, :, :3]
+        cam_buf["rgb"] = np.frombuffer(
+            img.raw_data, np.uint8
+        ).reshape(img.height, img.width, 4)[..., :3]
 
     camera.listen(cam_cb)
 
+
     def lidar_cb(point_cloud):
-        # ---- raw to numpy --------------------------------------------------
         data = np.frombuffer(point_cloud.raw_data, dtype=np.float32).reshape(-1, 4)
         pts_raw = data[:, :3]
-        pts_vis = pts_raw.copy(); pts_vis[:, 1] *= -1  # Y‑flip for Open3D
+
+        # CARLA to Open3D proper transformation (Corrected):
+        pts_vis = np.stack([pts_raw[:, 0], -pts_raw[:, 1], pts_raw[:, 2]], axis=-1)
+
         colors = intensity_to_rgb(data[:, 3])
 
-        # ---- road detection ----------------------------------------------
+        # Road detection section (unchanged):
         rgb = cam_buf["rgb"]
         if rgb is not None:
             img_h, img_w = rgb.shape[:2]
 
-            # --- LiDAR → CAMERA optical frame ----------------------------------
             pts_cam = (Tr_velo_to_cam @ np.c_[pts_raw, np.ones(len(pts_raw))].T)[:3].T
-            pts_cv  = pts_cam
 
-            # -------------------------------------------------------------------
             road_mask, road_pts, _ = my_road_from_pcd_is(
-                pts_cv.astype(np.float32),
+                pts_cam.astype(np.float32),
                 np.eye(4),
                 P2_left.astype(np.float32),
                 (img_h, img_w),
@@ -150,21 +152,19 @@ def make_lidar_callback(point_list, lidar, camera,
                 apply_filters=False,
             )
 
-            # -------- colour LiDAR points that fall on the road ---------------
             if road_pts.size:
-                tree   = cKDTree(road_pts, compact_nodes=True, balanced_tree=True)
-                hit    = tree.query_ball_point(pts_cv, r=0.10)          # 10 cm tol
-                onroad = np.fromiter((len(h) > 0 for h in hit),
-                                    dtype=bool, count=len(pts_vis))
+                tree = cKDTree(road_pts)
+                hit = tree.query_ball_point(pts_cam, r=0.15)  # increased tolerance
+                onroad = np.array([len(h) > 0 for h in hit])
                 colors[onroad] = [0.0, 0.0, 1.0]
 
-            # -------- nice 2‑D overlay ----------------------------------------
-            mask_rgb               = np.zeros_like(rgb)
-            mask_rgb[road_mask>0]  = [255, 0, 0]
-            cv2.imshow("Road mask (LiDAR)", cv2.addWeighted(rgb, 0.6, mask_rgb, 0.4, 0))
+            mask_rgb = np.zeros_like(rgb)
+            mask_rgb[road_mask > 0] = [255, 0, 0]
+            overlay = cv2.addWeighted(rgb, 0.6, mask_rgb, 0.4, 0)
+            cv2.imshow("Road mask (LiDAR)", overlay)
             cv2.waitKey(1)
 
-        # ---- push to Open3D ----------------------------------------------
+        # Updated points for visualization:
         point_list.points = o3d.utility.Vector3dVector(pts_vis)
         point_list.colors = o3d.utility.Vector3dVector(colors)
 
@@ -214,8 +214,8 @@ def main():
         vis = o3d.visualization.Visualizer()
         vis.create_window('CARLA HDL‑64E (KITTI)', WIN_W, WIN_H)
         ro = vis.get_render_option()
-        ro.background_color = [0.05, 0.05, 0.05]
-        ro.point_size = 1.0
+        ro.background_color = [0, 0, 0]
+        ro.point_size = 1.5
         ro.show_coordinate_frame = True
 
         # ---- register callback & loop -----------------------------------

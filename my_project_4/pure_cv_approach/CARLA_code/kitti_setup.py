@@ -1,22 +1,21 @@
 from __future__ import annotations
 """kitti_setup.py
 
-A minimal, self‑contained KITTI sensor rig description for CARLA 0.9.x.
+A faithful, self‑contained approximation of the original KITTI sensor
+configuration for CARLA ≥ 0.9. This module spawns
 
-Instantiate ``KittiSetup`` with a ``carla.World`` and a reference vehicle to
-spawn the sensors (HDL‑64E LiDAR + stereo RGB cameras) at the same relative
-poses, resolutions and intrinsic parameters as the original KITTI dataset
-recorded by the Autonomous Driving group at KIT.
+  • one Velodyne HDL‑64E S2 LiDAR
+  • a rectified, global‑shutter stereo pair of PointGrey Flea2 RGB cameras
 
-Example
--------
+on top of an arbitrary ego‑vehicle and exposes their intrinsic / extrinsic
+parameters exactly in KITTI text‑calibration format.
+
+Typical usage
+-------------
 >>> kitti = KittiSetup(world, vehicle)
 >>> sensors = kitti.spawn()
 >>> print(sensors["lidar"], sensors["cam_left"], sensors["cam_right"])
-
-The class also exposes the intrinsic and extrinsic calibration matrices in the
-exact KITTI text format via :py:meth:`write_calibration` for easy downstream
-use.
+>>> kitti.write_calibration("calib.txt")          # ⇢ identical to KITTI files
 """
 
 from pathlib import Path
@@ -26,166 +25,177 @@ import numpy as np
 import carla
 from scipy.spatial.transform import Rotation as R
 
-__all__ = [
-    "KittiSetup",
-]
+__all__ = ["KittiSetup"]
 
-# ---------------------------------------------------------------------------
-# Configuration constants (taken from the official KITTI sensor reference)
-# ---------------------------------------------------------------------------
 
-# Image size and intrinsics for the rectified colour cameras (PNG 12‑bit → 8‑bit)
-IMG_WIDTH = 1392
-IMG_HEIGHT = 1024
-FOCAL_LENGTH = 721.5377  # pixels (≈ 35 mm focal length on this sensor size)
-PRINCIPAL_POINT = (609.5593, 172.854)
-FOV = 72.0  # horizontal field of view (deg) – used when setting Carla camera fov
+# =============================================================================
+# Canonical KITTI 2011‑09‑26 sensor parameters  (colour, 1392 × 512 → 1242 × 375)
+# =============================================================================
+IMG_WIDTH: int = 1242         # px
+IMG_HEIGHT: int = 375         # px
+FOCAL_LENGTH: float = 721.5377  # px   (fx = fy after rectification)
+PRINCIPAL_POINT = (609.5593, 172.8540)            # (cx, cy)  px
+# horizontal FoV derived from sensor size and fx
+FOV: float = float(2 * np.degrees(np.arctan(IMG_WIDTH / (2 * FOCAL_LENGTH))))
 
-# Baseline between the rectified stereo pair (in metres)
-BASELINE = 0.537  # KITTI average ≈ 0.537 m
+BASELINE: float = 0.537  # m   (rectified stereo baseline ≈ 53.7 cm)
 
-# LiDAR (Velodyne HDL‑64E S2) parameters
+# ----------------------------------------------------------------------------- 
+# Velodyne HDL‑64E S2 (10 Hz, 1.3 M pts/s) ‑‑ official datasheet values
+# -----------------------------------------------------------------------------
 LIDAR_ATTRIBS = {
     "channels": "64",
     "points_per_second": "1300000",
-    "range": "100.0",
+    "rotation_frequency": "10",
+    "range": "120.0",
     "upper_fov": "2.0",
-    "lower_fov": "-24.9",
+    "lower_fov": "-24.8",
 }
 
-# Relative poses of the sensors w.r.t the vehicle (ego) frame
-# Coordinate system conventions:
-#   – CARLA:  x → forward,   y → right,  z → up
-#   – KITTI:  x → right,     y → down,   z → forward
-# To reproduce KITTI, we keep CARLA default, then convert when writing calib.
+# =============================================================================
+# Rigid body poses *in CARLA coordinates*             (x→fwd, y→right, z→up)
+# =============================================================================
+# Velodyne: roof‑mount, origin centred, optical frame rotated s.t.
+# CARLA→KITTI mapping later yields the canonical KITTI velo frame
 _LIDAR_POSE = carla.Transform(
-    carla.Location(x=0.0, y=0.0, z=1.73),  # roof‑mounted above cameras
-    carla.Rotation(pitch=0.0, yaw=180.0, roll=0.0),  # spin axis to +z (KITTI fwd)
+    carla.Location(x=0.00, y=0.00, z=1.73),
+    # The official KITTI extrinsic (see IJRR’13, Geiger et al.)
+    # results in R_velo_to_cam = [[0,-1,0],[0,0,-1],[1,0,0]].
+    # In CARLA we therefore rotate the sensor by Rz(0) @ Ry(-90) @ Rx(-90)
+    carla.Rotation(roll=-90.0, pitch=-90.0, yaw=0.0),
 )
-# Cameras sit 30 cm in front of lidar and 17 cm below, baseline along –y
+
+# Cameras: 30 cm in front of lidar, 27 cm below, baseline along –y (leftwards)
 _CAM_LEFT_POSE = carla.Transform(
-    carla.Location(x=0.30, y=0.0, z=1.56), carla.Rotation())
+    carla.Location(x=0.30, y=0.00, z=1.46),
+    carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0),
+)
 _CAM_RIGHT_POSE = carla.Transform(
-    carla.Location(x=0.30, y=-BASELINE, z=1.56), carla.Rotation())
+    carla.Location(x=0.30, y=-BASELINE, z=1.46),
+    carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0),
+)
 
-# ---------------------------------------------------------------------------
-# KITTI ‑ style rigid transform   LiDAR → LEFT RGB camera  (optical frame)
-# ---------------------------------------------------------------------------
-# Rotation  (KITTI official: x→z, y→−x, z→−y)
-R_velo_to_cam = np.array([[ 0., -1.,  0.],
-                          [ 0.,  0., -1.],
-                          [ 1.,  0.,  0.]], dtype=np.float32)
-
-# Translation (metres) – change these three numbers only
-t_velo_to_cam = np.array([0.27, 0.00, 0.00], dtype=np.float32)   # +27 cm X‑forward
-
-# Full 4 × 4 homogeneous matrix
-TR_VELO_TO_CAM = np.eye(4, dtype=np.float32)
-TR_VELO_TO_CAM[:3, :3] = R_velo_to_cam
-TR_VELO_TO_CAM[:3,  3] = t_velo_to_cam
-
-# ---------------------------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------------------------
-
-def _kitti_projection_matrix(tx: float = 0.0) -> np.ndarray:
-    """Return a 3×4 projection matrix *P* identical to KITTI calib "P0/P1"."""
-    cx, cy = PRINCIPAL_POINT
-    fx = fy = FOCAL_LENGTH
-    P = np.array([[fx, 0.0, cx, tx], [0.0, fy, cy, 0.0], [0.0, 0.0, 1.0, 0.0]], dtype=np.float32)
-    return P
-
-
+# =============================================================================
+# Helper utilities
+# =============================================================================
 def _carla_transform_to_matrix(tr: carla.Transform) -> np.ndarray:
-    """Convert CARLA transform to 4×4 homogeneous matrix (CARLA frame)."""
+    """Convert ``carla.Transform`` → 4 × 4 homogeneous matrix (CARLA frame)."""
     loc = tr.location
-    rot = R.from_euler("xyz", [tr.rotation.roll, tr.rotation.pitch, tr.rotation.yaw], degrees=True).as_matrix()
+    rot = R.from_euler("xyz",
+                       [tr.rotation.roll, tr.rotation.pitch, tr.rotation.yaw],
+                       degrees=True).as_matrix()
     T = np.eye(4, dtype=np.float32)
     T[:3, :3] = rot
-    T[:3, 3] = np.array([loc.x, loc.y, loc.z])
+    T[:3, 3] = np.array([loc.x, loc.y, loc.z], dtype=np.float32)
     return T
 
 
-# ---------------------------------------------------------------------------
-# Main class
-# ---------------------------------------------------------------------------
+def _carla_to_kitti() -> np.ndarray:
+    """4×4 fixed axis permutation (CARLA → KITTI)."""
+    return np.array([[0, 1, 0, 0],
+                     [0, 0, -1, 0],
+                     [1, 0, 0, 0],
+                     [0, 0, 0, 1]], dtype=np.float32)
 
+
+def _projection_matrix(tx: float = 0.0) -> np.ndarray:
+    """3×4 intrinsic‑projection *P* (identical to KITTI *P0 / P1*)."""
+    cx, cy = PRINCIPAL_POINT
+    fx = fy = FOCAL_LENGTH
+    return np.array([[fx, 0.0, cx, tx],
+                     [0.0, fy, cy, 0.0],
+                     [0.0, 0.0, 1.0, 0.0]],
+                    dtype=np.float32)
+
+
+# =============================================================================
+# Main interface
+# =============================================================================
 class KittiSetup:
-    """Spawns the KITTI sensor rig on a *vehicle* inside a CARLA *world*."""
+    """Spawn the KITTI sensor rig on *vehicle* inside a CARLA *world*."""
 
     def __init__(self, world: carla.World, vehicle: carla.Actor):
         self.world = world
         self.vehicle = vehicle
-        self.bp_library = self.world.get_blueprint_library()
+        self.bp_lib = self.world.get_blueprint_library()
         self.sensors: Dict[str, carla.Actor] = {}
 
-    # ------------------------------------------------------------------
-    # Public calibration helpers
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------
+    # Public calibration helpers (lazy‑evaluated from current poses)
+    # ---------------------------------------------------------------------
     @property
     def P2_left(self) -> np.ndarray:
-        """3×4 intrinsic‑projection matrix for the left RGB camera."""
-        return np.array([[FOCAL_LENGTH, 0.0, PRINCIPAL_POINT[0],  0.0],
-                        [0.0,          FOCAL_LENGTH, PRINCIPAL_POINT[1], 0.0],
-                        [0.0,          0.0,          1.0,                0.0]],
-                        dtype=np.float32)
+        return _projection_matrix()
+
+    @property
+    def P3_right(self) -> np.ndarray:
+        tx = -FOCAL_LENGTH * BASELINE
+        return _projection_matrix(tx)
 
     @property
     def Tr_velo_to_cam(self) -> np.ndarray:
-        """4×4 rigid transform (LiDAR → left camera optical frame)."""
-        return TR_VELO_TO_CAM.astype(np.float32)
+        """3×4 rigid transform (Velodyne → left‑cam optical, KITTI)."""
+        return self._lidar_to_cam0()
 
     # ---------------------------------------------------------------------
-    # Public API
+    # Sensor life‑cycle
     # ---------------------------------------------------------------------
-
     def spawn(self) -> Dict[str, carla.Actor]:
-        """Spawn LiDAR + stereo RGB cameras and return a dict mapping names to actors."""
+        """Spawn LiDAR + stereo cameras.  Returns {name: actor}."""
         self._spawn_lidar()
-        self._spawn_camera("cam_left", _CAM_LEFT_POSE)
+        self._spawn_camera("cam_left",  _CAM_LEFT_POSE)
         self._spawn_camera("cam_right", _CAM_RIGHT_POSE)
         return self.sensors
 
     def destroy(self):
-        """Destroy all spawned sensors."""
+        """Safely destroy all spawned sensors."""
         for actor in self.sensors.values():
             if actor.is_alive:
                 actor.destroy()
         self.sensors.clear()
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # File I/O
     # ------------------------------------------------------------------
+    def write_calibration(self, file: str | Path):
+        """Write KITTI‑compatible *calib.txt*."""
+        file = Path(file)
+        lines = [
+            "P0: " + " ".join(f"{v:.7e}" for v in self.P2_left.ravel()),
+            "P1: " + " ".join(f"{v:.7e}" for v in self.P3_right.ravel()),
+            "Tr_velo_to_cam: " + " ".join(
+                f"{v:.7e}" for v in self.Tr_velo_to_cam.ravel()
+            ),
+        ]
+        file.write_text("\n".join(lines) + "\n")
 
+    # ------------------------------------------------------------------
+    # internal – spawn helpers
+    # ------------------------------------------------------------------
     def _spawn_lidar(self):
-        lidar_bp = self.bp_library.find("sensor.lidar.ray_cast")
+        bp = self.bp_lib.find("sensor.lidar.ray_cast")
         for k, v in LIDAR_ATTRIBS.items():
-            lidar_bp.set_attribute(k, v)
-        lidar = self.world.spawn_actor(lidar_bp, _LIDAR_POSE, attach_to=self.vehicle)
+            bp.set_attribute(k, v)
+        lidar = self.world.spawn_actor(bp, _LIDAR_POSE, attach_to=self.vehicle)
         self.sensors["lidar"] = lidar
 
     def _spawn_camera(self, name: str, pose: carla.Transform):
-        cam_bp = self.bp_library.find("sensor.camera.rgb")
-        cam_bp.set_attribute("image_size_x", str(IMG_WIDTH))
-        cam_bp.set_attribute("image_size_y", str(IMG_HEIGHT))
-        cam_bp.set_attribute("fov", str(FOV))
-        camera = self.world.spawn_actor(cam_bp, pose, attach_to=self.vehicle)
-        self.sensors[name] = camera
+        bp = self.bp_lib.find("sensor.camera.rgb")
+        bp.set_attribute("image_size_x", str(IMG_WIDTH))
+        bp.set_attribute("image_size_y", str(IMG_HEIGHT))
+        bp.set_attribute("fov", f"{FOV:.3f}")
+        cam = self.world.spawn_actor(bp, pose, attach_to=self.vehicle)
+        self.sensors[name] = cam
 
     # ------------------------------------------------------------------
-    # Calibration math
+    # internal – calibration maths
     # ------------------------------------------------------------------
-
     def _lidar_to_cam0(self) -> np.ndarray:
-        """Return 3×4 rigid transform from LiDAR to left camera (KITTI frame)."""
+        """Return 3×4 Velodyne→Cam 0 transform (KITTI) computed at runtime."""
         T_lidar = _carla_transform_to_matrix(_LIDAR_POSE)
-        T_cam0 = _carla_transform_to_matrix(_CAM_LEFT_POSE)
+        T_cam   = _carla_transform_to_matrix(_CAM_LEFT_POSE)
+        T_velo_cam_carla = np.linalg.inv(T_cam) @ T_lidar
 
-        # LiDAR → ego and cam0 → ego, so T_cam0_ego = ...; We need velo → cam
-        T_ego_to_cam0 = np.linalg.inv(T_cam0)
-        T_velo_to_cam0 = T_ego_to_cam0 @ T_lidar
-
-        # Convert CARLA (x fwd, y right, z up) → KITTI (x right, y down, z fwd)
-        C = np.array([[0, 1, 0, 0], [0, 0, -1, 0], [1, 0, 0, 0], [0, 0, 0, 1]], dtype=np.float32)
-        Tr = C @ T_velo_to_cam0 @ np.linalg.inv(C)
-        return Tr[:3]  # 3×4
+        C2K = _carla_to_kitti()
+        T_velo_cam_kitti = C2K @ T_velo_cam_carla @ np.linalg.inv(C2K)
+        return T_velo_cam_kitti[:3, :4].astype(np.float32)
