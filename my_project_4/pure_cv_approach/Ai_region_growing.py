@@ -135,14 +135,101 @@ def apply_random_walker(image: MatLike, mask: np.ndarray) -> np.ndarray:
 
     return result_big;
 
-def my_road_detection(image: MatLike,
-                      image_color: MatLike,
-                      method: str = 'grabcut') -> Tuple[np.ndarray, np.ndarray]:
+# Machine Learning
+import torch
+import torchvision.transforms as T
+
+' https://docs.pytorch.org/vision/main/models.html '
+from torchvision.models.segmentation import deeplabv3plus_mobilenet_v3_large
+
+class DeepLabRoadSegmentor:
+    '''
+    Κλάση που δημιουργεί μία μάσκα δρόμου [0/255]
+    με χρήση του DeepLabV3 (προεκπαιδευμένο)!
+    '''
+    def __init__(self, prob_thresh: float = 0.5) -> None:
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.prob_thresh = prob_thresh
+
+        model_path = os.path.join(
+            os.path.dirname(__file__),
+            'best_deeplabv3plus_mobilenet_cityscapes_os16.pth'
+        )
+        self.model = deeplabv3plus_mobilenet_v3_large(weights = None)
+        self.model.load_state_dict(
+            torch.load(
+                model_path,
+                map_location = 'cpu',
+                weights_only = False
+            )
+        ).eval().to(self.device)
+
+        self.preprocess = T.Compose([
+            T.ToTensor(),
+            T.Normalize(
+                mean = [0.485, 0.456, 0.406],
+                std =  [0.229, 0.224, 0.225]
+            )
+        ])
+
+        return;
+
+    def predict_mask(self, image_bgr: np.ndarray) -> np.ndarray:
+        rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        model_input = self.preprocess(rgb).unsqueeze(0).to(self.device)
+
+        with torch.inference_mode():
+            pred = self.model(model_input)["out"].argmax(1)[0].cpu().numpy()
+        print(np.unique(pred))
+        mask = (pred == 7).astype(np.uint8) * 255
+
+        return mask;
+
+def my_road_detection(
+    image: MatLike,
+    image_color: MatLike,
+    method: str = 'grabcut',
+    ml_model: DeepLabRoadSegmentor = None
+) -> Tuple[np.ndarray, np.ndarray]:
     '''
     Συνδυάζει region growing και grabcut για να βρει την μάσκα του δρόμου.
     Παράλληλα, εφαρμόζει και κάποιες μορφολογικές μετασχηματίσεις για να καθαρίσει την εικόνα!
     Τέλος, επιστρέφει την τελική μάσκα και το μεγαλύτερο contour που βρήκε.
+
+    - methods -> 'grabcut', 'grabcut_fast', 'random_walker', 'ml'
     '''
+    if (method == 'ml') and (ml_model is not None):
+        mask = ml_model.predict_mask(image_color)
+
+        (contours, _) = cv2.findContours(
+            mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not contours:
+            return (mask, np.zeros((0, 1, 2), np.int32));
+
+        largest_contour = max(contours, key = cv2.contourArea)
+        final_mask = np.zeros_like(mask)
+        cv2.drawContours(
+            final_mask,
+            [largest_contour],
+            -1, 255,
+            thickness = cv2.FILLED
+        )
+
+        cv2.imshow('ml', final_mask)
+        cv2.imshow('image', image_color)
+        cv2.waitKey(0)
+        
+        return (final_mask, largest_contour);
+
+    elif method == 'ml':
+        method = 'grabcut_fast'
+        print(f"Επιλέχθηκε η μέθοδος 'ml', χωρίς δοθέν ml_model!")
+        print(f'Χρήση της default μεθόδου: {method}')
+
+    # ----- Μέθοδοι που βασίζονται σε region growing -----
     (height, width) = image.shape
 
     seed_points = (height - 1, width//2) # Το μόνο σίγουρο seed...
@@ -330,13 +417,19 @@ def split_convex_hull(
 def my_road_is(
     image: MatLike,
     image_color: MatLike,
-    method: str = 'grabcut'
+    method: str = 'grabcut',
+    ml_model: DeepLabRoadSegmentor = None
 ) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]], np.ndarray]:
     '''
     Επιστρέφει τα 2 lanes (2 convex hulls) που χωρίζουν τον δρόμο σε 2 λωρίδες
     και το convex hull του δρόμου!
     '''
-    (road_mask, largest_contour) = my_road_detection(image, image_color, method)
+    (road_mask, largest_contour) = my_road_detection(
+        image,
+        image_color,
+        method,
+        ml_model
+    )
     corners = find_mask_vertices(largest_contour)
     convex_hull = CH_graham_scan(np.array(corners))
     middle_white_line = lane_separation(image, road_mask) # Ή κίτρινη...
@@ -472,6 +565,7 @@ def compute_c1_channel(image_color: np.ndarray) -> np.ndarray:
 
 def main():
     base_dir = os.path.dirname(__file__)
+    model = DeepLabRoadSegmentor(prob_thresh = 0.5)
 
     for i in range(0, 10):
         temp = os.path.join(
@@ -498,7 +592,8 @@ def main():
             (lane1, lane2, convex_hull) = my_road_is(
                 image,
                 image_color,
-                method = 'grabcut_fast'
+                method = 'ml',
+                ml_model = model
             )
             print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
 
@@ -511,8 +606,8 @@ def main():
             else:
                 print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
                 draw_road_convex_hull(image_color, convex_hull)
-        except:
-            print(f"Σφάλμα στην εικόνα {img_file}!")
+        except Exception as e:
+            print(f"Σφάλμα στην εικόνα {img_file}: {e}!")
             continue;
 
         plt.figure(figsize = (10, 6))

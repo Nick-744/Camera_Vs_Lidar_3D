@@ -99,7 +99,6 @@ def main():
         left_path = os.path.join(
             base_dir,
             '..',
-            'pure_cv_approach',
             'KITTI',
             'data_road',
             'training',
@@ -109,7 +108,6 @@ def main():
         right_path = os.path.join(
             base_dir,
             '..',
-            'pure_cv_approach',
             'KITTI',
             'data_road_right',
             'training',
@@ -119,7 +117,6 @@ def main():
         calib_path = os.path.join(
             base_dir,
             '..',
-            'pure_cv_approach',
             'KITTI',
             'data_road',
             'training',
