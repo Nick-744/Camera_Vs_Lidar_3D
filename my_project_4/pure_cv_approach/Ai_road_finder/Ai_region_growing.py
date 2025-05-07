@@ -139,31 +139,29 @@ def apply_random_walker(image: MatLike, mask: np.ndarray) -> np.ndarray:
 import torch
 import torchvision.transforms as T
 
-' https://docs.pytorch.org/vision/main/models.html '
-from torchvision.models.segmentation import deeplabv3plus_mobilenet_v3_large
+' https://github.com/VainF/DeepLabV3Plus-Pytorch '
+from network.modeling import deeplabv3plus_mobilenet
+# Dataset: https://www.cityscapes-dataset.com/dataset-overview/#features
 
 class DeepLabRoadSegmentor:
     '''
     Κλάση που δημιουργεί μία μάσκα δρόμου [0/255]
-    με χρήση του DeepLabV3 (προεκπαιδευμένο)!
+    με χρήση του DeepLabV3+ (προεκπαιδευμένο)!
     '''
-    def __init__(self, prob_thresh: float = 0.5) -> None:
+    def __init__(self, prob_threshold: float = 0.5) -> None:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.prob_thresh = prob_thresh
-
+        self.prob_threshold = prob_threshold
         model_path = os.path.join(
             os.path.dirname(__file__),
             'best_deeplabv3plus_mobilenet_cityscapes_os16.pth'
         )
-        self.model = deeplabv3plus_mobilenet_v3_large(weights = None)
-        self.model.load_state_dict(
-            torch.load(
-                model_path,
-                map_location = 'cpu',
-                weights_only = False
-            )
-        ).eval().to(self.device)
+    
+        self.model = deeplabv3plus_mobilenet(num_classes = 19) # Βάση του repo!
+        state = torch.load(model_path, map_location = self.device, weights_only = False)
+        self.model.load_state_dict(state['model_state'])
+        self.model.eval().to(self.device)
 
+        # Κανονικοποίηση όπως στο ImageNet (ΑΠΑΡΑΙΤΗΤΟ για τα προεκπαιδευμένα μοντέλα)!
         self.preprocess = T.Compose([
             T.ToTensor(),
             T.Normalize(
@@ -174,14 +172,21 @@ class DeepLabRoadSegmentor:
 
         return;
 
-    def predict_mask(self, image_bgr: np.ndarray) -> np.ndarray:
-        rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-        model_input = self.preprocess(rgb).unsqueeze(0).to(self.device)
+    def predict_mask(self, image_color: np.ndarray) -> np.ndarray:
+        rgb = cv2.cvtColor(image_color, cv2.COLOR_BGR2RGB)
+        # Training: 768x768 random crop
+        rgb = cv2.resize(rgb, (768, 768), interpolation = cv2.INTER_LINEAR)
 
+        model_input = self.preprocess(rgb).unsqueeze(0).to(self.device)
         with torch.inference_mode():
-            pred = self.model(model_input)["out"].argmax(1)[0].cpu().numpy()
-        print(np.unique(pred))
-        mask = (pred == 7).astype(np.uint8) * 255
+            pred = self.model(model_input).argmax(1)[0].cpu().numpy()
+        
+        mask = (pred == 0).astype(np.uint8) * 255 # Κλάση 0 = δρόμος!
+        mask = cv2.resize(
+            mask,
+            (image_color.shape[1], image_color.shape[0]),
+            interpolation = cv2.INTER_NEAREST
+        )
 
         return mask;
 
@@ -217,10 +222,6 @@ def my_road_detection(
             -1, 255,
             thickness = cv2.FILLED
         )
-
-        cv2.imshow('ml', final_mask)
-        cv2.imshow('image', image_color)
-        cv2.waitKey(0)
         
         return (final_mask, largest_contour);
 
@@ -565,12 +566,12 @@ def compute_c1_channel(image_color: np.ndarray) -> np.ndarray:
 
 def main():
     base_dir = os.path.dirname(__file__)
-    model = DeepLabRoadSegmentor(prob_thresh = 0.5)
+    model = DeepLabRoadSegmentor()
 
     for i in range(0, 10):
         temp = os.path.join(
             base_dir,
-            '..',
+            '..', '..',
             'KITTI',
             'data_road',
             'testing',
@@ -587,28 +588,28 @@ def main():
             print(f"Η εικόνα {img_file} δεν βρέθηκε!")
             continue;
         
-        try:
-            start = time()
-            (lane1, lane2, convex_hull) = my_road_is(
-                image,
-                image_color,
-                method = 'ml',
-                ml_model = model
-            )
-            print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
+        #try:
+        start = time()
+        (lane1, lane2, convex_hull) = my_road_is(
+            image,
+            image_color,
+            method = 'ml',
+            ml_model = model
+        )
+        print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
 
-            (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
-            temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
+        (lane1_area, lane2_area) = (polygon_area(lane1), polygon_area(lane2))
+        temp = lane1_area/lane2_area if lane1_area > lane2_area else lane2_area/lane1_area
 
-            # Ζωγραφικήηη
-            if temp < 4.1:
-                draw_lanes(image_color, lane1, lane2)
-            else:
-                print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
-                draw_road_convex_hull(image_color, convex_hull)
-        except Exception as e:
-            print(f"Σφάλμα στην εικόνα {img_file}: {e}!")
-            continue;
+        # Ζωγραφικήηη
+        if temp < 4.1:
+            draw_lanes(image_color, lane1, lane2)
+        else:
+            print('Δεν βρέθηκε αξιοπιστη διαχωριστική γραμμή! Απλός σχεδιασμός δρόμου...')
+            draw_road_convex_hull(image_color, convex_hull)
+        # except Exception as e:
+        #     print(f"Σφάλμα στην εικόνα {img_file}: {e}!")
+        #     continue;
 
         plt.figure(figsize = (10, 6))
 

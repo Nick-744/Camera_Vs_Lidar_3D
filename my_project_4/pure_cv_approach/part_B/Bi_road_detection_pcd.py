@@ -243,7 +243,7 @@ def main():
         general_name_file = f'um_0000{i}'
         bin_path = os.path.join(
             base_dir,
-            '..',
+            '..', '..',
             'KITTI',
             'data_road_velodyne',
             'training',
@@ -252,7 +252,7 @@ def main():
         )
         img_path = os.path.join(
             base_dir, 
-            '..',
+            '..', '..',
             'KITTI',
             'data_road',
             'training',
@@ -261,7 +261,7 @@ def main():
         )
         calib_path = os.path.join(
             base_dir,
-            '..',
+            '..', '..',
             'KITTI',
             'data_road',
             'training',
