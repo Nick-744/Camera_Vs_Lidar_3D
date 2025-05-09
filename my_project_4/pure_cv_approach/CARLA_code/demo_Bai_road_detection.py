@@ -60,7 +60,7 @@ def get_camera_intrinsic_matrix(width:   int,
 
 def get_transform_matrix(transform: carla.Transform) -> np.ndarray:
     '''
-    carla.Transform -> ho
+    carla.Transform -> Homogeneous Transformation Matrix [world coords]
     '''
     rotation = transform.rotation
     location = transform.location
