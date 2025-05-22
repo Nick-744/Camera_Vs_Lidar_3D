@@ -96,9 +96,9 @@ def main():
     base_dir = os.path.dirname(__file__)
     for i in range(10, 50):
         name = f'um_0000{i}'
-        img_path = os.path.join(base_dir, '..', 'KITTI', 'data_road', 'training', 'image_2', f'{name}.png')
-        bin_path = os.path.join(base_dir, '..', 'KITTI', 'data_road_velodyne', 'training', 'velodyne', f'{name}.bin')
-        calib_path = os.path.join(base_dir, '..', 'KITTI', 'data_road', 'training', 'calib', f'{name}.txt')
+        img_path = os.path.join(base_dir, '..', '..', 'KITTI', 'data_road', 'training', 'image_2', f'{name}.png')
+        bin_path = os.path.join(base_dir, '..', '..', 'KITTI', 'data_road_velodyne', 'training', 'velodyne', f'{name}.bin')
+        calib_path = os.path.join(base_dir, '..', '..', 'KITTI', 'data_road', 'training', 'calib', f'{name}.txt')
 
         if not (os.path.exists(img_path) and os.path.exists(bin_path) and os.path.exists(calib_path)):
             print(f'Λείπει αρχείο: {name}')
