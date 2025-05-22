@@ -161,7 +161,8 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
         show = debug
     )
 
-    # Φίλτρα:
+    # Φίλτρα - Απλά κάνουνε πιο αργή την εκτέλεση, χωρίς
+    # σημαντική βελτίωση στην ποιότητα εύρεσης του δρόμου...
     if apply_filters:
         ground_points = filter_points_near_plane(
             ground_points,
@@ -241,8 +242,8 @@ def load_calibration(calib_path: str) -> tuple:
 def main():
     base_dir = os.path.dirname(__file__)
 
-    for i in range(10, 90):
-        general_name_file = f'um_0000{i}'
+    for i in range(94):
+        general_name_file = f'um_0000{i}' if i > 9 else f'um_00000{i}'
         bin_path = os.path.join(
             base_dir,
             '..', '..',
@@ -286,14 +287,14 @@ def main():
             Tr_velo_to_cam,
             P2,
             image.shape,
-            apply_filters = True
+            apply_filters = False
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
         # Ζωγραφικηηή!
         mask_colored = np.zeros_like(image)
         mask_colored[road_mask == 255] = [255, 0, 0]
-        overlay = cv2.addWeighted(image, 0.6, mask_colored, 0.4, 0)
+        overlay = cv2.addWeighted(image, 1., mask_colored, 0.8, 0)
 
         cv2.imshow("Μάσκα από LiDAR", overlay)
         cv2.waitKey(0)
