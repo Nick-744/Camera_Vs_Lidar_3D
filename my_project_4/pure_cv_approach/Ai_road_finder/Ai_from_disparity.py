@@ -80,21 +80,41 @@ def point_cloud_from_disparity(disparity: np.ndarray,
 
     return points;
 
-def ransac_ground(points: np.ndarray) -> np.ndarray:
+def ransac_ground(points:             np.ndarray,
+                  distance_threshold: float = 0.02,
+                  ransac_n:           int = 3,
+                  num_iterations:     int = 3000,
+                  show:               bool = False) -> tuple:
     '''
-    Υπολογισμός του επιπέδου του δρόμου με RANSAC
+    Υπολογισμός/Εύρεση επιπέδου δρόμου με RANSAC.
+
+    Returns:
+        out: tuple
+        - Σημεία που ανήκουν σε εμπόδια [obstacle_points]
+        - Σημεία που ανήκουν στο έδαφος [ ground_points ]
+        - Συντεταγμένες του επιπέδου    [  plane_model  ]
     '''
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
 
-    (_, inliers) = pcd.segment_plane(
-        distance_threshold = 0.02,
-        ransac_n           = 3,
-        num_iterations     = 3000
+    (plane_model, inliers) = pcd.segment_plane(
+        distance_threshold,
+        ransac_n,
+        num_iterations
     )
-    ground_points = pcd.select_by_index(inliers)
 
-    return np.asarray(ground_points.points);
+    obstacle_points = pcd.select_by_index(inliers, invert = True)
+    ground_points = pcd.select_by_index(inliers)
+    if show:
+        obstacle_points.paint_uniform_color([1., 0., 0.]) # Κόκκινο
+        ground_points.paint_uniform_color(  [0., 1., 0.]) # Πράσινο
+        o3d.visualization.draw_geometries([ground_points, obstacle_points])
+
+    return (
+        np.asarray(obstacle_points.points),
+        np.asarray(ground_points.points),
+        plane_model
+    );
 
 def project_points_to_mask(points:      np.ndarray,
                            calib:       dict,
@@ -130,7 +150,7 @@ def detect_ground_mask(left_gray:      np.ndarray,
                        crop_bottom:    bool = True) -> np.ndarray:
     disparity = compute_disparity(left_gray, right_gray)
     points = point_cloud_from_disparity(disparity, calib)
-    ground_pts = ransac_ground(points)
+    (_, ground_pts, _) = ransac_ground(points)
 
     return project_points_to_mask(
         ground_pts,

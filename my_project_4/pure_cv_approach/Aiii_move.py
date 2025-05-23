@@ -3,7 +3,12 @@ import cv2
 import numpy as np
 from time import time
 
-from Ai_road_finder.Ai_from_disparity import compute_disparity, point_cloud_from_disparity, ransac_ground, ground_mask_from_points
+from Ai_road_finder.Ai_from_disparity import (
+    compute_disparity,
+    point_cloud_from_disparity,
+    ransac_ground,
+    project_points_to_mask
+)
 from Aii_object_detection.stereo_obstacle_detection import draw_bboxes
 
 def main():
@@ -18,17 +23,17 @@ def main():
 
     for idx in range(10, 12):
         name = f"um_0000{idx}.png"
-        left_path = os.path.join(base_dir, '..', '..', 'KITTI', 'data_road', 'training', 'image_2', name)
-        right_path = os.path.join(base_dir, '..', '..', 'KITTI', 'data_road_right', 'training', 'image_3', name)
+        left_path = os.path.join(base_dir, '..', 'KITTI', 'data_road', 'training', 'image_2', name)
+        right_path = os.path.join(base_dir, '..', 'KITTI', 'data_road_right', 'training', 'image_3', name)
 
         left_color = cv2.imread(left_path)
         left_gray = cv2.imread(left_path, cv2.IMREAD_GRAYSCALE)
         right_gray = cv2.imread(right_path, cv2.IMREAD_GRAYSCALE)
 
         disparity = compute_disparity(left_gray, right_gray)
-        points, mask = point_cloud_from_disparity(disparity, calib, left_color)
-        obs_pts, ground_pts, plane = ransac_ground(points)
-        road_mask = ground_mask_from_points(ground_pts, calib, left_color.shape)
+        points = point_cloud_from_disparity(disparity, calib)
+        ground_pts = ransac_ground(points)
+        road_mask = project_points_to_mask(ground_pts, calib, left_color.shape)
 
         # Estimate direction
         road_blur = cv2.GaussianBlur(road_mask.astype(np.uint8) * 255, (21, 21), 0)
