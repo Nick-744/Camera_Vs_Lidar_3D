@@ -12,6 +12,8 @@ import open3d as o3d
 import numpy as np
 import cv2
 
+os.environ['LOKY_MAX_CPU_COUNT'] = '4' # Χαζομάρες για logical cores...
+
 def parse_kitti_calib(file_path: str) -> dict:
     calib = {}
     with open(file_path, 'r') as f:
@@ -82,7 +84,7 @@ def hybrid_cluster_parallel(points:         np.ndarray,
 
     kmeans = MiniBatchKMeans(
         n_clusters = coarse_k,
-        batch_size = 1000
+        batch_size = 3072
     ).fit(points)
     labels_kmeans = kmeans.labels_
 
@@ -208,36 +210,30 @@ def draw_bboxes(img:   np.ndarray,
 
 def filter_boxes_by_road_mask(boxes:              list,
                               road_mask:          np.ndarray,
-                              threshold:          float = 0.2,
+                              dilate_kernel_size: int = 10,
                               vertical_offset:    int = 0,
-                              dilate_kernel_size: int = 11) -> list:
+                              threshold:          float = 0.2,
+                              min_side_contact:   int = 10) -> list:
     '''
-    Κρατά μόνο τα boxes που επικαλύπτονται με τη
-    road_mask πάνω από το threshold ποσοστό!
+    Κρατά μόνο τα boxes που επικαλύπτονται αρκετά με τον δρόμο
+    ΚΑΙ έχουν τουλάχιστον 2 πλευρές σε επαφή με τη road_mask.
     '''
     (h, w) = road_mask.shape
     kernel = np.ones((dilate_kernel_size, dilate_kernel_size), np.uint8)
     dilated = cv2.dilate(
-        road_mask.astype(np.uint8),
-        kernel,
-        iterations = 1
+        road_mask.astype(np.uint8), kernel, iterations = 2
     )
 
     filtered = []
     for (x1, y1, x2, y2) in boxes:
-        (y1_shifted, y2_shifted) = (
-            y1 + vertical_offset,
-            y2 + vertical_offset
-        )
-        x1 = np.clip(x1, 0, w - 1)
-        x2 = np.clip(x2, 0, w - 1)
-        y1_shifted = np.clip(y1_shifted, 0, h - 1)
-        y2_shifted = np.clip(y2_shifted, 0, h - 1)
+        (y1s, y2s) = (y1 + vertical_offset, y2 + vertical_offset)
+        (x1, x2) = (np.clip(x1, 0, w - 1), np.clip(x2, 0, w - 1))
+        (y1s, y2s) = (np.clip(y1s, 0, h - 1), np.clip(y2s, 0, h - 1))
 
-        if (x2 <= x1) or (y2_shifted <= y1_shifted):
+        if (x2 <= x1) or (y2s <= y1s):
             continue;
 
-        box_mask = dilated[y1_shifted:y2_shifted, x1:x2]
+        box_mask = dilated[y1s:y2s, x1:x2]
         area = box_mask.size
         if area == 0:
             continue;
@@ -245,7 +241,17 @@ def filter_boxes_by_road_mask(boxes:              list,
         overlap = np.count_nonzero(box_mask)
         overlap_ratio = overlap / area
 
-        if overlap_ratio >= threshold:
+        sides_touch = 0 # Έλεγξε αν κάποια πλευρά αγγίζει αρκετά!
+        if np.count_nonzero(dilated[y1s, x1:x2]) >= min_side_contact:
+            sides_touch += 1
+        if np.count_nonzero(dilated[y2s - 1, x1:x2]) >= min_side_contact:
+            sides_touch += 1
+        if np.count_nonzero(dilated[y1s:y2s, x1]) >= min_side_contact:
+            sides_touch += 1
+        if np.count_nonzero(dilated[y1s:y2s, x2 - 1]) >= min_side_contact:
+            sides_touch += 1
+
+        if (overlap_ratio >= threshold) and (sides_touch >= 2):
             filtered.append([x1, y1, x2, y2])
 
     return filtered;
@@ -297,16 +303,18 @@ def detect_obstacles(left_color:     np.ndarray,
     boxes = filter_boxes_by_road_mask(
         boxes,
         road_mask_cleaned,
-        threshold = 0.02,
+        dilate_kernel_size = 11,
         vertical_offset = left_color.shape[0] // 2,
-        dilate_kernel_size = 11
+        threshold = 0.05,
+        min_side_contact = 15
     )
 
     return (boxes, road_mask, road_mask_cleaned);
 
 def main():
     base_dir = os.path.dirname(__file__)
-    dataset_type = 'training'
+    dataset_type = 'testing'
+    # dataset_type = 'training'
 
     calib_path = os.path.join(base_dir, 'calibration_KITTI.txt')
     calib = parse_kitti_calib(calib_path)
