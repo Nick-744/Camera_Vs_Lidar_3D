@@ -4,8 +4,8 @@ sys.path.append(os.path.abspath(
 ) # Για την εισαγωγή του Ai_road_finder!
 from Ai_road_finder.Ai_from_disparity import *
 
-from sklearn.cluster import MiniBatchKMeans
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import (MiniBatchKMeans, DBSCAN)
+from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 from time import time
 import open3d as o3d
@@ -52,38 +52,60 @@ def cluster_obstacles_dbscan(points:      np.ndarray,
 
     return labels;
 
-def hybrid_cluster(points: np.ndarray,
-                   coarse_k: int = 100,
-                   db_eps: float = 0.3,
-                   db_min_samples: int = 20) -> np.ndarray:
-    '''
-    Συνδυασμός MiniBatchKMeans και DBSCAN για γρηγορότερο clustering!
-    '''
-    # MiniBatchKMeans για γρήγορη αρχική ομαδοποίηση
+def process_cluster(k:              int,
+                    labels_kmeans:  np.ndarray,
+                    points:         np.ndarray,
+                    db_eps:         float,
+                    db_min_samples: int,
+                    label_offset:   int) -> tuple:
+    k_mask = (labels_kmeans == k)
+    cluster_pts = points[k_mask]
+
+    if len(cluster_pts) < db_min_samples:
+        return (np.full(len(cluster_pts), -1), np.flatnonzero(k_mask));
+
+    sub_labels = DBSCAN(
+        eps = db_eps,
+        min_samples = db_min_samples
+    ).fit(cluster_pts).labels_
+    valid_mask = sub_labels != -1
+    sub_labels[~valid_mask] = -1 # Θόρυβος = -1
+    sub_labels[valid_mask] += label_offset
+
+    return (sub_labels, np.flatnonzero(k_mask));
+
+def hybrid_cluster_parallel(points:         np.ndarray,
+                            coarse_k:       int = 100,
+                            db_eps:         float = 0.3,
+                            db_min_samples: int = 20,
+                            n_jobs:         int = -1) -> np.ndarray:
+
     kmeans = MiniBatchKMeans(
-        n_clusters = coarse_k, batch_size = 1000
+        n_clusters = coarse_k,
+        batch_size = 1000
     ).fit(points)
     labels_kmeans = kmeans.labels_
 
-    # DBSCAN για λεπτομερή ομαδοποίηση!
-    final_labels = -np.ones(len(points), dtype = int)
-    label_id = 0
+    final_labels = -np.ones(len(points), dtype=int)
 
-    for k in np.unique(labels_kmeans):
-        cluster_pts = points[labels_kmeans == k]
-        if len(cluster_pts) < db_min_samples:
-            continue;
+    # Parallel DBSCAN σε κάθε cluster!
+    results = Parallel(n_jobs = n_jobs)(
+        delayed(process_cluster)(
+            k,
+            labels_kmeans,
+            points,
+            db_eps,
+            db_min_samples,
+            label_offset = i * 1000
+        )
+        for (i, k) in enumerate(np.unique(labels_kmeans))
+    )
 
-        sub_labels = DBSCAN(
-            eps = db_eps,
-            min_samples = db_min_samples
-        ).fit(cluster_pts).labels_
-        mask = sub_labels != -1
-
-        # Ενημέρωση ετικετών για τα σημεία του cluster
-        target_indices = np.where(labels_kmeans == k)[0][mask]
-        final_labels[target_indices] = label_id + sub_labels[mask]
-        label_id += sub_labels.max() + 1
+    for (sub_labels, indices) in results:
+        final_labels[indices] = np.maximum(
+            final_labels[indices],
+            sub_labels
+        )
 
     return final_labels;
 
@@ -252,11 +274,11 @@ def detect_obstacles(left_color:     np.ndarray,
     filtered_pts = filter_by_height(
         obstacle_pts,
         plane,
-        min_h = 0.4,
+        min_h = 0.2,
         max_h = 2.
     ) # ΠΑΡΑ ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ!!!
 
-    labels = (hybrid_cluster(filtered_pts) if fast else \
+    labels = (hybrid_cluster_parallel(filtered_pts) if fast else \
               cluster_obstacles_dbscan(filtered_pts))
     clusters = group_clusters(filtered_pts, labels)
 
@@ -275,7 +297,7 @@ def detect_obstacles(left_color:     np.ndarray,
     boxes = filter_boxes_by_road_mask(
         boxes,
         road_mask_cleaned,
-        threshold = 0.03,
+        threshold = 0.02,
         vertical_offset = left_color.shape[0] // 2,
         dilate_kernel_size = 11
     )
