@@ -60,6 +60,9 @@ def process_cluster(k:              int,
                     db_eps:         float,
                     db_min_samples: int,
                     label_offset:   int) -> tuple:
+    '''
+    Βοηθητική συνάρτηση για τον παραλλησμό των clusters!
+    '''
     k_mask = (labels_kmeans == k)
     cluster_pts = points[k_mask]
 
@@ -81,14 +84,17 @@ def hybrid_cluster_parallel(points:         np.ndarray,
                             db_eps:         float = 0.3,
                             db_min_samples: int = 20,
                             n_jobs:         int = -1) -> np.ndarray:
-
+    '''
+    O(n/2) + O(n/2) faster than O(n) λογική!
+    Παρόλο που παραμένει O(n) θεωρητικά...
+    '''
     kmeans = MiniBatchKMeans(
         n_clusters = coarse_k,
         batch_size = 3072
     ).fit(points)
     labels_kmeans = kmeans.labels_
 
-    final_labels = -np.ones(len(points), dtype=int)
+    final_labels = -np.ones(len(points), dtype = int)
 
     # Parallel DBSCAN σε κάθε cluster!
     results = Parallel(n_jobs = n_jobs)(
@@ -217,6 +223,7 @@ def filter_boxes_by_road_mask(boxes:              list,
     '''
     Κρατά μόνο τα boxes που επικαλύπτονται αρκετά με τον δρόμο
     ΚΑΙ έχουν τουλάχιστον 2 πλευρές σε επαφή με τη road_mask.
+    Παράλληλα, φιλτράρει και τα boxes που είναι πολύ δυσανάλογα!
     '''
     (h, w) = road_mask.shape
     kernel = np.ones((dilate_kernel_size, dilate_kernel_size), np.uint8)
@@ -227,10 +234,15 @@ def filter_boxes_by_road_mask(boxes:              list,
     filtered = []
     for (x1, y1, x2, y2) in boxes:
         (y1s, y2s) = (y1 + vertical_offset, y2 + vertical_offset)
-        (x1, x2) = (np.clip(x1, 0, w - 1), np.clip(x2, 0, w - 1))
+        (x1, x2)   = (np.clip(x1 , 0, w - 1), np.clip(x2 , 0, w - 1))
         (y1s, y2s) = (np.clip(y1s, 0, h - 1), np.clip(y2s, 0, h - 1))
 
         if (x2 <= x1) or (y2s <= y1s):
+            continue;
+
+        # Προστέθηκε και φίλτρο για δυσανάλογα boxes!
+        # Έγινε σε αυτό το σημείο από θέμα ευκολίας για εμένα...
+        if (x2 - x1) / (y2s - y1s) > 2.5:
             continue;
 
         box_mask = dilated[y1s:y2s, x1:x2]
@@ -242,11 +254,11 @@ def filter_boxes_by_road_mask(boxes:              list,
         overlap_ratio = overlap / area
 
         sides_touch = 0 # Έλεγξε αν κάποια πλευρά αγγίζει αρκετά!
-        if np.count_nonzero(dilated[y1s, x1:x2]) >= min_side_contact:
+        if np.count_nonzero(dilated[y1s,      x1:x2]) >= min_side_contact:
             sides_touch += 1
-        if np.count_nonzero(dilated[y2s - 1, x1:x2]) >= min_side_contact:
+        if np.count_nonzero(dilated[y2s - 1,  x1:x2]) >= min_side_contact:
             sides_touch += 1
-        if np.count_nonzero(dilated[y1s:y2s, x1]) >= min_side_contact:
+        if np.count_nonzero(dilated[y1s:y2s,     x1]) >= min_side_contact:
             sides_touch += 1
         if np.count_nonzero(dilated[y1s:y2s, x2 - 1]) >= min_side_contact:
             sides_touch += 1
@@ -256,6 +268,17 @@ def filter_boxes_by_road_mask(boxes:              list,
 
     return filtered;
 
+'''
+Έγιναν δοκιμές να εφαρμοστεί DBSCAN (de-noise) αμέσως μετά το RANSAC
+με αποτέλεσμα να πάρω μία πολύ καλή αναπαράσταση του χώρου
+του δρόμου μόνο με όσα εμπόδια βρίσκονταν πάνω του. Όμως,
+λόγω του DBSCAN, η διαδικασία αργούσε πολύ (~ 2 sec)...
+Έτσι, κατέληξα ξανά στον συμβιβασμό με τον οποίο ξεκίνησα,
+δηλαδή να φιλτράρω τα σημεία με βάση το ύψος τους! Ίσως η
+τρισδιάστατη αναπαράσταση που μόλις ανέφερα είχε καλύτερα
+αποτελέσματα στον εντοπισμό των εμποδίων, αλλά δεν άξιζε
+απλά και μόνο λόγω του χρόνου εκτέλεσης!
+'''
 def detect_obstacles(left_color:     np.ndarray,
                      left_gray:      np.ndarray,
                      right_gray:     np.ndarray,
@@ -282,7 +305,7 @@ def detect_obstacles(left_color:     np.ndarray,
         plane,
         min_h = 0.2,
         max_h = 2.
-    ) # ΠΑΡΑ ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ!!!
+    ) # ΠΑΡΑ ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ!!! Επιταχύνει την διαδικασία!
 
     labels = (hybrid_cluster_parallel(filtered_pts) if fast else \
               cluster_obstacles_dbscan(filtered_pts))
@@ -306,7 +329,7 @@ def detect_obstacles(left_color:     np.ndarray,
         dilate_kernel_size = 11,
         vertical_offset = left_color.shape[0] // 2,
         threshold = 0.05,
-        min_side_contact = 15
+        min_side_contact = 14 # γύρω στο 14 <-> 16 καλύτερα αποτελέσματα
     )
 
     return (boxes, road_mask, road_mask_cleaned);
@@ -314,7 +337,7 @@ def detect_obstacles(left_color:     np.ndarray,
 def main():
     base_dir = os.path.dirname(__file__)
     dataset_type = 'testing'
-    # dataset_type = 'training'
+    dataset_type = 'training'
 
     calib_path = os.path.join(base_dir, 'calibration_KITTI.txt')
     calib = parse_kitti_calib(calib_path)
@@ -367,8 +390,11 @@ def main():
         print(f'Χρόνος εκτέλεσης: {time() - start:.2f} sec')
 
         # Ζωγραφικηηηή
+        
+        # Δρόμος
         left_color = overlay_mask(left_color, road_mask_cleaned)
-
+        
+        # Εμπόδια
         draw_bboxes(
             left_color,
             boxes,
