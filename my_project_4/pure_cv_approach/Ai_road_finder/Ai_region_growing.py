@@ -149,7 +149,7 @@ class DeepLabRoadSegmentor:
     με χρήση του DeepLabV3+ (προεκπαιδευμένο)!
     '''
     def __init__(self, prob_threshold: float = 0.5) -> None:
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.prob_threshold = prob_threshold
         model_path = os.path.join(
             os.path.dirname(__file__),
@@ -262,7 +262,7 @@ def my_road_detection(
         seeds[(dilated == 1) & (seeds != 2)] = 0 # Unknown area!
         mask = apply_random_walker(compute_c1_channel(image_color), seeds)
     else:
-        raise ValueError(f"Άγνωστη μέθοδος: {method}");
+        raise ValueError(f'Άγνωστη μέθοδος: {method}');
 
     ' https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html '
     (contours, _) = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -287,10 +287,17 @@ def find_mask_vertices(largest_contour: np.ndarray) -> List[Tuple[int, int]]:
 
 def CH_graham_scan(points: np.ndarray) -> np.ndarray: # Χορηγία του Lab 2!
     if len(points) < 3:
-        raise ValueError("No convex hull can be defined with less than 3 points!");
+        raise ValueError('No convex hull can be defined with less than 3 points!');
     
     def orientation(p, q, r):
-        return np.cross(q - p, r - q);
+        # Όλα τα παρακάτω, επειδή:
+        '''DeprecationWarning: Arrays of 2-dimensional vectors are
+        deprecated. Use arrays of 3-dimensional vectors instead.
+        (deprecated in NumPy 2.0)'''
+        (a, b) = (q - p, r - q)
+        return np.cross(
+            np.array([a[0], a[1], 0.]), np.array([b[0], b[1], 0.])
+        )[2];
 
     # Initial step - sorting according to angle
     p0_idx = np.argmin(points[:, 1])
@@ -571,16 +578,17 @@ def main():
     base_dir = os.path.dirname(__file__)
     model = None #DeepLabRoadSegmentor()
     METHOD = 'grabcut_fast'
+    image_type = 'um'
+    dataset_type = 'testing'
+    #dataset_type = 'training'
 
-    for i in range(0, 10):
+    for i in range(10):
+        general_name_file = (f'{image_type}_0000{i}' if i > 9 \
+                             else f'{image_type}_00000{i}')
         temp = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road',
-            'testing',
-            'image_2',
-            f'um_00000{i}.png'
+            base_dir, '..', '..',
+            'KITTI', 'data_road', dataset_type, 'image_2',
+            f'{general_name_file}.png'
         )
         img_file = os.path.abspath(temp)
 
@@ -589,7 +597,7 @@ def main():
         image_color = cv2.imread(img_file, cv2.IMREAD_COLOR) # Σε BGR format!
 
         if (image is None) or (image_color is None):
-            print(f"Η εικόνα {img_file} δεν βρέθηκε!")
+            print(f'Η εικόνα {img_file} δεν βρέθηκε!')
             continue;
         
         try:
@@ -600,7 +608,7 @@ def main():
                 method = METHOD,
                 ml_model = model
             )
-            print(f"Διάρκεια εκτέλεσης: {time() - start:.2f} sec")
+            print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
             if METHOD == 'ml':
                 mask = image_color.copy()
@@ -619,7 +627,7 @@ def main():
                 draw_road_convex_hull(image_color, convex_hull)
         except Exception as e:
             if METHOD != 'ml':
-                print(f"Σφάλμα στην εικόνα {img_file}: {e}!")
+                print(f'Σφάλμα στην εικόνα {img_file}: {e}!')
                 continue;
 
         plt.figure(figsize = (10, 6))
@@ -634,5 +642,5 @@ def main():
 
     return;
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

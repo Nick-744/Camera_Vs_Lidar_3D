@@ -200,12 +200,14 @@ def post_process_mask(mask:        np.ndarray,
 
 def main():
     base_dir = os.path.dirname(__file__)
+    
+    image_type = 'um'
     dataset_type = 'testing'
     dataset_type = 'training'
 
-    for idx in range(94):
-        general_name_file = (f'um_0000{idx}' if idx > 9 \
-                             else f'um_00000{idx}')
+    for i in range(94):
+        general_name_file = (f'{image_type}_0000{i}' if i > 9 \
+                             else f'{image_type}_00000{i}')
         left_path = os.path.join(
             base_dir, '..', '..',
             'KITTI', 'data_road', dataset_type, 'image_2',
@@ -228,7 +230,7 @@ def main():
         calib      = parse_kitti_calib(calib_path)
 
         # Αφαίρεση του άνω μισού της εικόνας (γρηγορότερο disparity!)
-        left_gray = crop_bottom_half(left_gray)
+        left_gray  = crop_bottom_half(left_gray)
         right_gray = crop_bottom_half(right_gray)
 
         # Βασική εκτέλεση
@@ -242,8 +244,9 @@ def main():
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
+        # min_area = 15000 <-> 20000 καλύτερα αποτελέσματα!
         mask_cleaned = post_process_mask(
-            mask, min_area = 5000, kernel_size = 7
+            mask, min_area = 15000, kernel_size = 7
         )
         result = overlay_mask(left_color, mask_cleaned)
 
