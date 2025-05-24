@@ -176,7 +176,6 @@ def filter_by_height(points: np.ndarray,
 def filter_boxes_by_road_mask(boxes:              list,
                               road_mask:          np.ndarray,
                               dilate_kernel_size: int = 10,
-                              vertical_offset:    int = 0,
                               threshold:          float = 0.2,
                               min_side_contact:   int = 10) -> list:
     '''
@@ -192,19 +191,18 @@ def filter_boxes_by_road_mask(boxes:              list,
 
     filtered = []
     for (x1, y1, x2, y2) in boxes:
-        (y1s, y2s) = (y1 + vertical_offset, y2 + vertical_offset)
-        (x1, x2)   = (np.clip(x1 , 0, w - 1), np.clip(x2 , 0, w - 1))
-        (y1s, y2s) = (np.clip(y1s, 0, h - 1), np.clip(y2s, 0, h - 1))
+        (x1, x2) = (np.clip(x1, 0, w - 1), np.clip(x2, 0, w - 1))
+        (y1, y2) = (np.clip(y1, 0, h - 1), np.clip(y2, 0, h - 1))
 
-        if (x2 <= x1) or (y2s <= y1s):
+        if (x2 <= x1) or (y2 <= y1):
             continue;
 
         # Προστέθηκε και φίλτρο για δυσανάλογα boxes!
         # Έγινε σε αυτό το σημείο από θέμα ευκολίας για εμένα...
-        if (x2 - x1) / (y2s - y1s) > 2.5:
+        if (x2 - x1) / (y2 - y1) > 2.5:
             continue;
 
-        box_mask = dilated[y1s:y2s, x1:x2]
+        box_mask = dilated[y1:y2, x1:x2]
         area = box_mask.size
         if area == 0:
             continue;
@@ -213,13 +211,13 @@ def filter_boxes_by_road_mask(boxes:              list,
         overlap_ratio = overlap / area
 
         sides_touch = 0 # Έλεγξε αν κάποια πλευρά αγγίζει αρκετά!
-        if np.count_nonzero(dilated[y1s,      x1:x2]) >= min_side_contact:
+        if np.count_nonzero(dilated[y1,     x1:x2]) >= min_side_contact:
             sides_touch += 1
-        if np.count_nonzero(dilated[y2s - 1,  x1:x2]) >= min_side_contact:
+        if np.count_nonzero(dilated[y2 - 1, x1:x2]) >= min_side_contact:
             sides_touch += 1
-        if np.count_nonzero(dilated[y1s:y2s,     x1]) >= min_side_contact:
+        if np.count_nonzero(dilated[y1:y2,     x1]) >= min_side_contact:
             sides_touch += 1
-        if np.count_nonzero(dilated[y1s:y2s, x2 - 1]) >= min_side_contact:
+        if np.count_nonzero(dilated[y1:y2, x2 - 1]) >= min_side_contact:
             sides_touch += 1
 
         if (overlap_ratio >= threshold) and (sides_touch >= 2):
@@ -271,7 +269,7 @@ def detect_obstacles(left_color:     np.ndarray,
     clusters = group_clusters(filtered_pts, labels)
 
     boxes = project_to_image(
-        clusters, calib, left_color.shape, min_box_area = 300,
+        clusters, calib, original_shape, min_box_area = 300,
     )
 
     # Φιλτράρισμα boxes με βάση road mask!
@@ -281,7 +279,6 @@ def detect_obstacles(left_color:     np.ndarray,
         boxes,
         road_mask_cleaned,
         dilate_kernel_size = 11,
-        vertical_offset = left_color.shape[0] // 2,
         threshold = 0.05,
         min_side_contact = 14 # γύρω στο 14 <-> 16 καλύτερα αποτελέσματα
     )
@@ -291,15 +288,10 @@ def detect_obstacles(left_color:     np.ndarray,
 # --- Helpers ---
 def draw_bboxes(img:   np.ndarray,
                 boxes: list,
-                color: tuple = (0, 255, 0),
-                vertical_offset: int = 0) -> None:
+                color: tuple = (0, 255, 0)) -> None:
     for (x1, y1, x2, y2) in boxes:
         cv2.rectangle(
-            img,
-            (x1, y1 + vertical_offset),
-            (x2, y2 + vertical_offset),
-            color,
-            2
+            img, (x1, y1), (x2, y2), color, 2
         )
     
     return;
@@ -384,8 +376,7 @@ def main():
         # Εμπόδια
         draw_bboxes(
             left_color,
-            boxes,
-            vertical_offset = left_color.shape[0] // 4,
+            boxes
         )
 
         cv2.imshow('Stereo-Only Obstacle Detection', left_color)
