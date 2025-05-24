@@ -14,6 +14,7 @@ import cv2
 
 os.environ['LOKY_MAX_CPU_COUNT'] = '4' # Χαζομάρες για logical cores...
 
+# --- Απαιτούμενες πληροφορίες για το setup του KITTI ---
 def parse_kitti_calib(file_path: str) -> dict:
     calib = {}
     with open(file_path, 'r') as f:
@@ -32,13 +33,13 @@ def parse_kitti_calib(file_path: str) -> dict:
 
     return calib;
 
+# --- Ανίχνευση εμποδίων ---
 def cluster_obstacles_dbscan(points:      np.ndarray,
                              eps:         float = 0.3,
                              min_samples: int = 20,
                              show:        bool = False) -> np.ndarray:
     clustering = DBSCAN(
-        eps = eps,
-        min_samples = min_samples
+        eps = eps, min_samples = min_samples
     ).fit(points)
     labels = clustering.labels_
 
@@ -54,31 +55,6 @@ def cluster_obstacles_dbscan(points:      np.ndarray,
 
     return labels;
 
-def process_cluster(k:              int,
-                    labels_kmeans:  np.ndarray,
-                    points:         np.ndarray,
-                    db_eps:         float,
-                    db_min_samples: int,
-                    label_offset:   int) -> tuple:
-    '''
-    Βοηθητική συνάρτηση για τον παραλλησμό των clusters!
-    '''
-    k_mask = (labels_kmeans == k)
-    cluster_pts = points[k_mask]
-
-    if len(cluster_pts) < db_min_samples:
-        return (np.full(len(cluster_pts), -1), np.flatnonzero(k_mask));
-
-    sub_labels = DBSCAN(
-        eps = db_eps,
-        min_samples = db_min_samples
-    ).fit(cluster_pts).labels_
-    valid_mask = sub_labels != -1
-    sub_labels[~valid_mask] = -1 # Θόρυβος = -1
-    sub_labels[valid_mask] += label_offset
-
-    return (sub_labels, np.flatnonzero(k_mask));
-
 def hybrid_cluster_parallel(points:         np.ndarray,
                             coarse_k:       int = 100,
                             db_eps:         float = 0.3,
@@ -89,8 +65,7 @@ def hybrid_cluster_parallel(points:         np.ndarray,
     Παρόλο που παραμένει O(n) θεωρητικά...
     '''
     kmeans = MiniBatchKMeans(
-        n_clusters = coarse_k,
-        batch_size = 3072
+        n_clusters = coarse_k, batch_size = 3072
     ).fit(points)
     labels_kmeans = kmeans.labels_
 
@@ -111,28 +86,10 @@ def hybrid_cluster_parallel(points:         np.ndarray,
 
     for (sub_labels, indices) in results:
         final_labels[indices] = np.maximum(
-            final_labels[indices],
-            sub_labels
+            final_labels[indices], sub_labels
         )
 
     return final_labels;
-
-def filter_by_height(points: np.ndarray,
-                     plane:  tuple,
-                     min_h:  float = 0.15,
-                     max_h:  float = 2.) -> np.ndarray:
-    '''
-    Φιλτράρει σημεία με βάση το κατακόρυφο ύψος τους από το επίπεδο.
-    '''
-    (a, b, c, d) = plane
-
-    normal = np.array([a, b, c], dtype = np.float32)
-    norm = np.linalg.norm(normal)
-    dists = np.abs((points @ normal + d) / norm)
-
-    mask = (dists >= min_h) & (dists <= max_h)
-
-    return points[mask];
 
 def group_clusters(points: np.ndarray,
                    labels: np.ndarray) -> dict[int, np.ndarray]:
@@ -199,20 +156,22 @@ def project_to_image(clusters:     dict,
 
     return boxes;
 
-def draw_bboxes(img:   np.ndarray,
-                boxes: list,
-                color: tuple = (0, 255, 0),
-                vertical_offset: int = 0) -> None:
-    for (x1, y1, x2, y2) in boxes:
-        cv2.rectangle(
-            img,
-            (x1, y1 + vertical_offset),
-            (x2, y2 + vertical_offset),
-            color,
-            2
-        )
-    
-    return;
+def filter_by_height(points: np.ndarray,
+                     plane:  tuple,
+                     min_h:  float = 0.15,
+                     max_h:  float = 2.) -> np.ndarray:
+    '''
+    Φιλτράρει σημεία με βάση το κατακόρυφο ύψος τους από το επίπεδο.
+    '''
+    (a, b, c, d) = plane
+
+    normal = np.array([a, b, c], dtype = np.float32)
+    norm = np.linalg.norm(normal)
+    dists = np.abs((points @ normal + d) / norm)
+
+    mask = (dists >= min_h) & (dists <= max_h)
+
+    return points[mask];
 
 def filter_boxes_by_road_mask(boxes:              list,
                               road_mask:          np.ndarray,
@@ -299,30 +258,25 @@ def detect_obstacles(left_color:     np.ndarray,
     disparity = compute_disparity(left_gray, right_gray)
     pcd = point_cloud_from_disparity(disparity, calib)
 
+    # Αναγνώριση δρόμου
     (obstacle_pts, ground_pts, plane) = ransac_ground(pcd)
+
+    # ΠΑΡΑ ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ!!! Επιταχύνει την διαδικασία!
     filtered_pts = filter_by_height(
-        obstacle_pts,
-        plane,
-        min_h = 0.2,
-        max_h = 2.
-    ) # ΠΑΡΑ ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ!!! Επιταχύνει την διαδικασία!
+        obstacle_pts, plane, min_h = 0.2, max_h = 2.
+    )
 
     labels = (hybrid_cluster_parallel(filtered_pts) if fast else \
               cluster_obstacles_dbscan(filtered_pts))
     clusters = group_clusters(filtered_pts, labels)
 
     boxes = project_to_image(
-        clusters,
-        calib,
-        left_color.shape,
-        min_box_area = 300,
+        clusters, calib, left_color.shape, min_box_area = 300,
     )
 
     # Φιλτράρισμα boxes με βάση road mask!
-    road_mask = project_points_to_mask(
-        ground_pts, calib, shape = original_shape
-    )
-    road_mask_cleaned = post_process_mask(road_mask) # Αναγνώριση δρόμου
+    road_mask = project_points_to_mask(ground_pts, calib, original_shape)
+    road_mask_cleaned = post_process_mask(road_mask)
     boxes = filter_boxes_by_road_mask(
         boxes,
         road_mask_cleaned,
@@ -334,6 +288,47 @@ def detect_obstacles(left_color:     np.ndarray,
 
     return (boxes, road_mask, road_mask_cleaned);
 
+# --- Helpers ---
+def draw_bboxes(img:   np.ndarray,
+                boxes: list,
+                color: tuple = (0, 255, 0),
+                vertical_offset: int = 0) -> None:
+    for (x1, y1, x2, y2) in boxes:
+        cv2.rectangle(
+            img,
+            (x1, y1 + vertical_offset),
+            (x2, y2 + vertical_offset),
+            color,
+            2
+        )
+    
+    return;
+
+def process_cluster(k:              int,
+                    labels_kmeans:  np.ndarray,
+                    points:         np.ndarray,
+                    db_eps:         float,
+                    db_min_samples: int,
+                    label_offset:   int) -> tuple:
+    '''
+    Βοηθητική συνάρτηση για τον παραλλησμό των clusters!
+    '''
+    k_mask = (labels_kmeans == k)
+    cluster_pts = points[k_mask]
+
+    if len(cluster_pts) < db_min_samples:
+        return (np.full(len(cluster_pts), -1), np.flatnonzero(k_mask));
+
+    sub_labels = DBSCAN(
+        eps = db_eps, min_samples = db_min_samples
+    ).fit(cluster_pts).labels_
+
+    valid_mask = sub_labels != -1
+    sub_labels[~valid_mask] = -1 # Θόρυβος = -1
+    sub_labels[valid_mask] += label_offset
+
+    return (sub_labels, np.flatnonzero(k_mask));
+
 def main():
     base_dir = os.path.dirname(__file__)
     dataset_type = 'testing'
@@ -342,26 +337,18 @@ def main():
     calib_path = os.path.join(base_dir, 'calibration_KITTI.txt')
     calib = parse_kitti_calib(calib_path)
 
-    for idx in range(0, 94):
+    for idx in range(94):
         image_name = (f'um_0000{idx}.png' if idx > 9 \
                       else f'um_00000{idx}.png')
 
         left_path = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road',
-            dataset_type,
-            'image_2',
+            base_dir, '..', '..',
+            'KITTI', 'data_road', dataset_type, 'image_2',
             image_name
         )
         right_path = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road_right',
-            dataset_type,
-            'image_3',
+            base_dir, '..', '..',
+            'KITTI', 'data_road_right', dataset_type, 'image_3',
             image_name
         )
 
@@ -389,7 +376,7 @@ def main():
         )
         print(f'Χρόνος εκτέλεσης: {time() - start:.2f} sec')
 
-        # Ζωγραφικηηηή
+        # --- Ζωγραφικηηηή ---
         
         # Δρόμος
         left_color = overlay_mask(left_color, road_mask_cleaned)

@@ -50,8 +50,7 @@ def compute_disparity(left_gray:  np.ndarray,
 
     # r / 16., λόγω του εσωτερικού τρόπου υπολογισμού [πράξεις με int]!
     return stereo.compute(
-        left_gray,
-        right_gray
+        left_gray, right_gray
     ).astype(np.float32) / 16.;
 
 def point_cloud_from_disparity(disparity: np.ndarray,
@@ -60,10 +59,7 @@ def point_cloud_from_disparity(disparity: np.ndarray,
     disparity + calib -> 3D point cloud!
     '''
     (f, cx, cy, Tx) = (
-        calib['f'],
-        calib['cx'],
-        calib['cy'],
-        calib['Tx']
+        calib['f'], calib['cx'], calib['cy'], calib['Tx']
     )
 
     (h, w) = disparity.shape
@@ -98,9 +94,7 @@ def ransac_ground(points:             np.ndarray,
     pcd.points = o3d.utility.Vector3dVector(points)
 
     (plane_model, inliers) = pcd.segment_plane(
-        distance_threshold,
-        ransac_n,
-        num_iterations
+        distance_threshold, ransac_n, num_iterations
     )
 
     obstacle_points = pcd.select_by_index(inliers, invert = True)
@@ -153,10 +147,7 @@ def detect_ground_mask(left_gray:      np.ndarray,
     (_, ground_pts, _) = ransac_ground(points)
 
     return project_points_to_mask(
-        ground_pts,
-        calib,
-        original_shape,
-        crop_bottom = crop_bottom
+        ground_pts, calib, original_shape, crop_bottom
     );
 
 # --- Helpers ---
@@ -209,35 +200,25 @@ def post_process_mask(mask:        np.ndarray,
 
 def main():
     base_dir = os.path.dirname(__file__)
+    dataset_type = 'testing'
+    dataset_type = 'training'
 
     for idx in range(94):
         general_name_file = (f'um_0000{idx}' if idx > 9 \
                              else f'um_00000{idx}')
         left_path = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road',
-            'training',
-            'image_2',
+            base_dir, '..', '..',
+            'KITTI', 'data_road', dataset_type, 'image_2',
             f'{general_name_file}.png'
         )
         right_path = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road_right',
-            'training',
-            'image_3',
+            base_dir, '..', '..',
+            'KITTI', 'data_road_right', dataset_type, 'image_3',
             f'{general_name_file}.png'
         )
         calib_path = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road',
-            'training',
-            'calib',
+            base_dir, '..', '..',
+            'KITTI', 'data_road', dataset_type, 'calib',
             f'{general_name_file}.txt'
         )
 
@@ -262,9 +243,7 @@ def main():
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
         mask_cleaned = post_process_mask(
-            mask,
-            min_area = 5000,
-            kernel_size = 7,
+            mask, min_area = 5000, kernel_size = 7
         )
         result = overlay_mask(left_color, mask_cleaned)
 
