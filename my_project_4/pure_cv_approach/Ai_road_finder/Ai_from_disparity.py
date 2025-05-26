@@ -159,14 +159,19 @@ def crop_bottom_half(image: np.ndarray) -> np.ndarray:
 def overlay_mask(image: np.ndarray,
                  mask:  np.ndarray,
                  color: tuple = (0, 0, 255),
-                 alpha: float = 0.8) -> np.ndarray:
+                 alpha: float = 0.5) -> np.ndarray:
     ''' Προβολή διαφανούς μάσκας σε εικόνα '''
-    color_mask = np.zeros_like(image)
-    color_mask[mask > 0] = color
+    # Οι δείκτες των pixels μάσκας που είναι foreground
+    idx = mask.astype(bool)
 
-    blended = cv2.addWeighted(image, 1., color_mask, alpha, 0)
-    
-    return blended;
+    # Δημιουργία solid χρώματος για την μάσκα
+    solid = np.empty_like(image[idx])
+    solid[:] = color
+
+    # Συνδυασμός της αρχικής εικόνας με το solid χρώμα (mask)
+    image[idx] = cv2.addWeighted(image[idx], 1 - alpha, solid, alpha, 0)
+
+    return image;
 
 def post_process_mask(mask:        np.ndarray,
                       min_area:    int = 5000,

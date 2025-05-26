@@ -16,9 +16,7 @@ def filter_visible_points(pcd:            np.ndarray,
     Witcher 3 type of optimization sh*t!
     '''
     (_, u, v, mask_depth) = project_lidar_to_image(
-        pcd,
-        Tr_velo_to_cam,
-        P2
+        pcd, Tr_velo_to_cam, P2
     )
     pts_kept = pcd[mask_depth]
 
@@ -42,14 +40,14 @@ def detect_ground_plane(points:             np.ndarray,
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
 
-    plane_model, inliers = pcd.segment_plane(
+    (plane_model, inliers) = pcd.segment_plane(
         distance_threshold = distance_threshold,
         ransac_n           = ransac_n,
         num_iterations     = num_iterations
     )
 
     ground = pcd.select_by_index(inliers)
-    non_ground = pcd.select_by_index(inliers, invert=True)
+    non_ground = pcd.select_by_index(inliers, invert = True)
     if show:
         ground.paint_uniform_color([0.0, 1.0, 0.0])
         non_ground.paint_uniform_color([1.0, 0.0, 0.0])
@@ -67,9 +65,7 @@ def project_points_to_image(pcd:            np.ndarray,
     filter_visible_points, απλά τώρα επιστρέφει μάσκα!
     '''
     (_, u, v, _) = project_lidar_to_image(
-        pcd,
-        Tr_velo_to_cam,
-        P2
+        pcd, Tr_velo_to_cam, P2
     )
 
     (h, w) = image_shape[:2]
@@ -83,14 +79,28 @@ def project_points_to_image(pcd:            np.ndarray,
     kernel = np.ones((6, 6), np.uint8)
     mask = cv2.dilate(mask, kernel, iterations = 2)
     (num_labels, labels, stats, _) = cv2.connectedComponentsWithStats(
-        mask,
-        connectivity = 8
+        mask, connectivity = 8
     )
     if num_labels > 1:
         largest = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
         mask_binary = (labels == largest).astype(np.uint8)
     
     return mask_binary * 255;
+
+def downsample_points(points: np.ndarray, voxel_size: float = 0.1) -> np.ndarray:
+    '''
+    Downsample τα σημεία του point cloud με χρήση voxel grid.
+
+    - voxel_size:
+        Το μέγεθος του voxel για το downsampling.
+    '''
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+
+    # Downsample με voxel grid
+    pcd_downsampled = pcd.voxel_down_sample(voxel_size)
+    
+    return np.asarray(pcd_downsampled.points);
 
 def filter_points_by_local_smoothness(
     points:        np.ndarray,
@@ -146,18 +156,18 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
     μαζί με τα σημεία του δρόμου και το επίπεδο του δρόμου.
     '''
     visible_points = filter_visible_points(
-        pcd,
-        Tr_velo_to_cam,
-        P2,
-        image_shape
+        pcd, Tr_velo_to_cam, P2, image_shape
     )
     if debug:
         print(f'Ορατά σημεία: {visible_points.shape[0]}')
     
+    # temp = downsample_points(
+    #     visible_points, voxel_size = 0.1
+    # )
     (ground_points, plane) = detect_ground_plane(
         visible_points,
         distance_threshold = 0.02,
-        num_iterations = 10000,
+        num_iterations = 20000,
         show = debug
     )
 
@@ -165,21 +175,14 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
     # σημαντική βελτίωση στην ποιότητα εύρεσης του δρόμου...
     if apply_filters:
         ground_points = filter_points_near_plane(
-            ground_points,
-            plane,
-            max_dist = 0.02
+            ground_points, plane, max_dist = 0.02
         )
         ground_points = filter_points_by_local_smoothness(
-            ground_points,
-            radius = 0.08,
-            height_thresh = 0.02
+            ground_points, radius = 0.08, height_thresh = 0.02
         )
 
     road_mask = project_points_to_image(
-        ground_points,
-        Tr_velo_to_cam,
-        P2,
-        image_shape
+        ground_points, Tr_velo_to_cam, P2, image_shape
     )
 
     return (road_mask, ground_points, plane);
@@ -208,6 +211,23 @@ def project_lidar_to_image(points:         np.ndarray,
 
     return (cam, u, v, depth_mask);
 
+def overlay_mask(image: np.ndarray,
+                 mask:  np.ndarray,
+                 color: tuple = (0, 0, 255),
+                 alpha: float = 0.8) -> np.ndarray:
+    ''' Προβολή διαφανούς μάσκας σε εικόνα '''
+    # Οι δείκτες των pixels μάσκας που είναι foreground
+    idx = mask.astype(bool)
+
+    # Δημιουργία solid χρώματος για την μάσκα
+    solid = np.empty_like(image[idx])
+    solid[:] = color
+
+    # Συνδυασμός της αρχικής εικόνας με το solid χρώμα (mask)
+    image[idx] = cv2.addWeighted(image[idx], 1 - alpha, solid, alpha, 0)
+
+    return image;
+
 # ----- I/O -----
 def load_velodyne_bin(bin_path: str) -> np.ndarray:
     '''
@@ -227,7 +247,7 @@ def load_calibration(calib_path: str) -> tuple:
     with open(calib_path, 'r') as f:
         for line in f:
             if ':' in line:
-                key, value = line.strip().split(':', 1)
+                (key, value) = line.strip().split(':', 1)
                 calib[key] = np.array(
                     [float(x) for x in value.strip().split()]
                 )
@@ -241,43 +261,32 @@ def load_calibration(calib_path: str) -> tuple:
 
 def main():
     base_dir = os.path.dirname(__file__)
+    dataset_type = 'testing'
+    #dataset_type = 'training'
+
+    calib_path = os.path.join(base_dir, 'calibration_KITTI_pcd.txt')
+    (Tr_velo_to_cam, P2) = load_calibration(calib_path)
+    if not os.path.isfile(calib_path):
+        print(f'Πρόβλημα με το αρχείο calibration: {calib_path}')
+        return;
 
     for i in range(94):
         general_name_file = f'um_0000{i}' if i > 9 else f'um_00000{i}'
         bin_path = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road_velodyne',
-            'training',
-            'velodyne',
+            base_dir, '..', '..',
+            'KITTI', 'data_road_velodyne', dataset_type, 'velodyne',
             f'{general_name_file}.bin'
         )
         img_path = os.path.join(
-            base_dir, 
-            '..', '..',
-            'KITTI',
-            'data_road',
-            'training',
-            'image_2',
+            base_dir, '..', '..',
+            'KITTI', 'data_road', dataset_type, 'image_2',
             f'{general_name_file}.png'
         )
-        calib_path = os.path.join(
-            base_dir,
-            '..', '..',
-            'KITTI',
-            'data_road',
-            'training',
-            'calib',
-            f'{general_name_file}.txt'
-        )
         if not (os.path.isfile(bin_path) and \
-                os.path.isfile(img_path) and \
-                os.path.isfile(calib_path)):
+                os.path.isfile(img_path)):
             print(f'Πρόβλημα με το {general_name_file}')
             continue;
         
-        (Tr_velo_to_cam, P2) = load_calibration(calib_path)
         image  = cv2.imread(img_path)
         points = load_velodyne_bin(bin_path)
 
@@ -292,15 +301,15 @@ def main():
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
         # Ζωγραφικηηή!
-        mask_colored = np.zeros_like(image)
-        mask_colored[road_mask == 255] = [255, 0, 0]
-        overlay = cv2.addWeighted(image, 1., mask_colored, 0.8, 0)
+        overlay = overlay_mask(
+            image, road_mask, color = (255, 0, 0), alpha = 0.5
+        )
 
-        cv2.imshow("Μάσκα από LiDAR", overlay)
+        cv2.imshow('Μάσκα από LiDAR', overlay)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
     return;
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

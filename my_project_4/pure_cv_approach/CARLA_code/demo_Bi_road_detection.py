@@ -10,19 +10,13 @@ bi_road_module_path = os.path.abspath(os.path.join('..', 'part_B'))
 sys.path.append(bi_road_module_path)
 from Bi_road_detection_pcd import my_road_from_pcd_is
 
-# CARLA egg setup
+# --- CARLA egg setup
 try:
     carla_egg_path = glob.glob(os.path.abspath(
-        os.path.join(
-            '..', '..',
-            'CARLA_0.9.11',
-            'WindowsNoEditor',
-            'PythonAPI',
-            'carla',
-            'dist',
-            'carla-*%d.%d-%s.egg' % (
-                sys.version_info.major,
-                sys.version_info.minor,
+        os.path.join('..', '..',
+            'CARLA_0.9.11', 'WindowsNoEditor',
+            'PythonAPI', 'carla', 'dist', 'carla-*%d.%d-%s.egg' % (
+                sys.version_info.major, sys.version_info.minor,
                 'win-amd64' if os.name == 'nt' else 'linux-x86_64'
             )
         )
@@ -33,11 +27,11 @@ except:
     sys.exit(1);
 import carla
 
-# Image buffer
+# --- Image buffer
 latest_rgb = {'frame': None}
 raw_lidar_points = None
 
-# Helper functions
+# --- Helper functions
 def get_camera_intrinsic_matrix(width:   int,
                                 height:  int,
                                 fov_deg: float) -> np.ndarray:
@@ -65,16 +59,13 @@ def get_transform_matrix(transform: carla.Transform) -> np.ndarray:
     rotation = transform.rotation
     location = transform.location
     (cy, sy) = (
-        np.cos(np.radians(rotation.yaw)),
-        np.sin(np.radians(rotation.yaw))
+        np.cos(np.radians(rotation.yaw)), np.sin(np.radians(rotation.yaw))
     )
     (cp, sp) = (
-        np.cos(np.radians(rotation.pitch)),
-        np.sin(np.radians(rotation.pitch))
+        np.cos(np.radians(rotation.pitch)), np.sin(np.radians(rotation.pitch))
     )
     (cr, sr) = (
-        np.cos(np.radians(rotation.roll)),
-        np.sin(np.radians(rotation.roll))
+        np.cos(np.radians(rotation.roll)), np.sin(np.radians(rotation.roll))
     )
 
     matrix = np.array([
@@ -86,13 +77,29 @@ def get_transform_matrix(transform: carla.Transform) -> np.ndarray:
 
     return matrix;
 
-# Callbacks
+def overlay_mask(image: np.ndarray,
+                 mask:  np.ndarray,
+                 color: tuple = (0, 0, 255),
+                 alpha: float = 0.5) -> np.ndarray:
+    ''' Προβολή διαφανούς μάσκας σε εικόνα '''
+    # Οι δείκτες των pixels μάσκας που είναι foreground
+    idx = mask.astype(bool)
+
+    # Δημιουργία solid χρώματος για την μάσκα
+    solid = np.empty_like(image[idx])
+    solid[:] = color
+
+    # Συνδυασμός της αρχικής εικόνας με το solid χρώμα (mask)
+    image[idx] = cv2.addWeighted(image[idx], 1 - alpha, solid, alpha, 0)
+
+    return image;
+
+# --- Callbacks
 def lidar_callback(point_cloud: carla.LidarMeasurement) -> None:
     global raw_lidar_points
 
     data = np.frombuffer(
-        point_cloud.raw_data,
-        dtype = np.float32
+        point_cloud.raw_data, dtype = np.float32
     ).reshape(-1, 4)
     raw_lidar_points = data[:, :3]
 
@@ -105,7 +112,7 @@ def camera_callback(image: carla.Image) -> None:
 
     return;
 
-# Setups
+# --- Setups
 def setup_CARLA() -> tuple:
     client = carla.Client('localhost', 2000)
     client.set_timeout(10.)
@@ -138,9 +145,7 @@ def setup_camera(world,
     camera_bp.set_attribute('fov', str(FOV))
     camera_transform = carla.Transform(carla.Location(x = 1.5, z = 1.8))
     camera = world.spawn_actor(
-        camera_bp,
-        camera_transform,
-        attach_to = vehicle
+        camera_bp, camera_transform, attach_to = vehicle
     )
     
     return camera;
@@ -155,9 +160,7 @@ def setup_lidar_sensor(world,
     lidar_bp.set_attribute('points_per_second', '1000000')
     lidar_transform = carla.Transform(carla.Location(x = 0.2, z = 1.8))
     lidar = world.spawn_actor(
-        lidar_bp,
-        lidar_transform,
-        attach_to = vehicle
+        lidar_bp, lidar_transform, attach_to = vehicle
     )
     
     return lidar;
@@ -171,7 +174,7 @@ def main():
     vehicle = world.spawn_actor(vehicle_bp, spawn_point)
     vehicle.set_autopilot(True)
 
-    (WIDTH, HEIGHT, FOV) = (800, 600, 90)
+    (WIDTH, HEIGHT, FOV) = (600, 600, 90)
     camera = setup_camera(
         world,
         blueprint_library,
@@ -207,7 +210,7 @@ def main():
 
     print('Το setup ολοκληρώθηκε!')
 
-    # Main loop
+    # --- Main loop
     frame = 0
     dt0 = datetime.now()
     try:
@@ -226,12 +229,10 @@ def main():
                 (HEIGHT, WIDTH),
                 apply_filters = False
             )
-            green_overlay = display.copy()
-            green_overlay[mask > 0] = [255, 0, 0]
-            display = cv2.addWeighted(
-                display,       0.7,
-                green_overlay, 0.3,
-                0
+
+            # Εφαρμογή μάσκας στο display
+            display = overlay_mask(
+                display, mask, color = (255, 0, 0)
             )
             cv2.imshow('', display)
             if cv2.waitKey(1) & 0xFF == ord('q'):
