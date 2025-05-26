@@ -14,25 +14,6 @@ import cv2
 
 os.environ['LOKY_MAX_CPU_COUNT'] = '4' # Χαζομάρες για logical cores...
 
-# --- Απαιτούμενες πληροφορίες για το setup του KITTI ---
-def parse_kitti_calib(file_path: str) -> dict:
-    calib = {}
-    with open(file_path, 'r') as f:
-        for line in f:
-            if ':' not in line:
-                continue;
-            key, value = line.strip().split(':', 1)
-            calib[key.strip()] = float(value.strip())
-
-    required_keys = ['f', 'cx', 'cy', 'cx_prime', 'Tx']
-    for key in required_keys:
-        if key not in calib:
-            raise ValueError(
-                f'Λείπει η τιμή του {key} από το αρχείο {file_path}!'
-            );
-
-    return calib;
-
 # --- Ανίχνευση εμποδίων ---
 def cluster_obstacles_dbscan(points:      np.ndarray,
                              eps:         float = 0.3,
@@ -236,8 +217,7 @@ def filter_boxes_by_road_mask(boxes:              list,
 αποτελέσματα στον εντοπισμό των εμποδίων, αλλά δεν άξιζε
 απλά και μόνο λόγω του χρόνου εκτέλεσης!
 '''
-def detect_obstacles(left_color:     np.ndarray,
-                     left_gray:      np.ndarray,
+def detect_obstacles(left_gray:      np.ndarray,
                      right_gray:     np.ndarray,
                      original_shape: tuple,
                      calib:          dict,
@@ -279,8 +259,8 @@ def detect_obstacles(left_color:     np.ndarray,
         boxes,
         road_mask_cleaned,
         dilate_kernel_size = 11,
-        threshold = 0.05,
-        min_side_contact = 14 # γύρω στο 14 <-> 16 καλύτερα αποτελέσματα
+        threshold          = 0.05,
+        min_side_contact   = 14 # γύρω στο 14 <-> 16 καλύτερα αποτελέσματα
     )
 
     return (boxes, road_mask, road_mask_cleaned);
@@ -316,22 +296,24 @@ def process_cluster(k:              int,
     ).fit(cluster_pts).labels_
 
     valid_mask = sub_labels != -1
-    sub_labels[~valid_mask] = -1 # Θόρυβος = -1
-    sub_labels[valid_mask] += label_offset
+    sub_labels[~valid_mask]  = -1 # Θόρυβος = -1
+    sub_labels[valid_mask]  += label_offset
 
     return (sub_labels, np.flatnonzero(k_mask));
 
 def main():
     base_dir = os.path.dirname(__file__)
+
+    image_type = 'um'
     dataset_type = 'testing'
     dataset_type = 'training'
 
-    calib_path = os.path.join(base_dir, 'calibration_KITTI.txt')
-    calib = parse_kitti_calib(calib_path)
+    calib_path = os.path.join(base_dir, '..', 'calibration_KITTI.txt')
+    calib      = parse_kitti_calib(calib_path)
 
-    for idx in range(94):
-        image_name = (f'um_0000{idx}.png' if idx > 9 \
-                      else f'um_00000{idx}.png')
+    for i in range(94):
+        image_name =  (f'{image_type}_0000{i}.png' if i > 9 \
+                       else f'{image_type}_00000{i}.png')
 
         left_path = os.path.join(
             base_dir, '..', '..',
@@ -353,13 +335,11 @@ def main():
             print(f'Σφάλμα κατά την φόρτωση των εικόνων {image_name}!')
             continue;
         
-        left_color_cropped = crop_bottom_half(left_color)
         left_gray_cropped  = crop_bottom_half(left_gray)
         right_gray_cropped = crop_bottom_half(right_gray)
 
         start = time()
         (boxes, _, road_mask_cleaned) = detect_obstacles(
-            left_color_cropped,
             left_gray_cropped,
             right_gray_cropped,
             original_shape = left_color.shape,
@@ -374,10 +354,7 @@ def main():
         left_color = overlay_mask(left_color, road_mask_cleaned)
         
         # Εμπόδια
-        draw_bboxes(
-            left_color,
-            boxes
-        )
+        draw_bboxes(left_color, boxes)
 
         cv2.imshow('Stereo-Only Obstacle Detection', left_color)
         cv2.waitKey(0)

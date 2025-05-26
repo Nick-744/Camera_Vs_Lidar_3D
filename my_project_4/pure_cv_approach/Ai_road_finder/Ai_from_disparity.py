@@ -210,29 +210,27 @@ def main():
     dataset_type = 'testing'
     dataset_type = 'training'
 
+    calib_path = os.path.join(base_dir, '..', f'calibration_KITTI.txt')
+    calib      = parse_kitti_calib(calib_path)
+
     for i in range(94):
-        general_name_file = (f'{image_type}_0000{i}' if i > 9 \
-                             else f'{image_type}_00000{i}')
+        general_name_file = (f'{image_type}_0000{i}.png' if i > 9 \
+                             else f'{image_type}_00000{i}.png')
+        
         left_path = os.path.join(
             base_dir, '..', '..',
             'KITTI', 'data_road', dataset_type, 'image_2',
-            f'{general_name_file}.png'
+            general_name_file
         )
         right_path = os.path.join(
             base_dir, '..', '..',
             'KITTI', 'data_road_right', dataset_type, 'image_3',
-            f'{general_name_file}.png'
-        )
-        calib_path = os.path.join(
-            base_dir, '..', '..',
-            'KITTI', 'data_road', dataset_type, 'calib',
-            f'{general_name_file}.txt'
+            general_name_file
         )
 
         left_color = cv2.imread(left_path)
         left_gray  = cv2.imread(left_path, cv2.IMREAD_GRAYSCALE)
         right_gray = cv2.imread(right_path, cv2.IMREAD_GRAYSCALE)
-        calib      = parse_kitti_calib(calib_path)
 
         # Αφαίρεση του άνω μισού της εικόνας (γρηγορότερο disparity!)
         left_gray  = crop_bottom_half(left_gray)
