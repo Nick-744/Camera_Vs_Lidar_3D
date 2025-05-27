@@ -296,9 +296,9 @@ def main():
         start = time()
         (road_mask, _, _) = my_road_from_pcd_is(
             points, Tr_velo_to_cam, P2, image.shape,
-            filter = True
+            filter = True, height_dist = True
         )
-        print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
+        print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec / {general_name_file}')
 
         # Ζωγραφικηηή!
         overlay = overlay_mask(
