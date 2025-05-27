@@ -117,6 +117,12 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
     '''
     Επιστρέφει τη μάσκα του δρόμου που βρήκε από το pcd/LiDAR,
     μαζί με τα σημεία του δρόμου και το επίπεδο του δρόμου.
+
+    Params:
+     - Tr_velo_to_cam : Ο μετασχηματισμός από το σύστημα αναφοράς
+                        του LiDAR στην κάμερα.
+     - P2             : Ο πίνακας προβολής της κάμερας.
+     - height_dist    : Αν True, δείχνει το histogram των υψών.
     '''
     visible_points = filter_visible_points(
         pcd, Tr_velo_to_cam, P2, image_shape
@@ -131,14 +137,14 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
         show = debug
     )
 
-    (_, mode_h) = analyze_height_distribution(
-        visible_points, plane, height_dist
-    )
-    if debug or height_dist:
-        print(f'Ύψος δρόμου (mode): {mode_h:.2f}')
-
     # Νέα γενιά/δοκιμή φίλτρων:
     if filter:
+        (_, mode_h) = analyze_height_distribution(
+            visible_points, plane, height_dist
+        )
+        if debug or height_dist:
+            print(f'Ύψος δρόμου (mode): {mode_h:.2f}')
+        
         ground_points = filter_by_height(
             visible_points,
             plane,
