@@ -267,6 +267,51 @@ def load_calibration(calib_path: str) -> tuple:
 
     return (Tr_velo_to_cam, P2);
 
+############################################### Testing ###############################################
+from sklearn.neighbors import NearestNeighbors
+from numpy.linalg import eigvalsh
+
+def compute_adaptive_saliency(points, k=20):
+    """Compute fused saliency for each point using spectral and planarity features."""
+    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm='kd_tree').fit(points)
+    _, indices = nbrs.kneighbors(points)
+
+    diffs = np.take(points, indices[:, 1:], axis=0) - points[:, np.newaxis, :]
+    saliencies = np.zeros(len(points), dtype=np.float32)
+
+    spectral_sal = np.zeros(len(points), dtype=np.float32)
+    planarity_scores = np.zeros(len(points), dtype=np.float32)
+    confidences = np.zeros(len(points), dtype=np.float32)
+
+    for i in range(len(points)):
+        neighborhood = points[indices[i]]
+        cov = np.cov(neighborhood.T)
+        eigvals = eigvalsh(cov)
+        λ1, λ2, λ3 = sorted(eigvals)
+
+        # Spectral: sharpness measure
+        spectral_sal[i] = 1.0 / (np.sqrt(np.sum(eigvals ** 2)) + 1e-6)
+        # Planarity: flatness vs. edge
+        planarity_scores[i] = (λ2 - λ3) / (λ1 + 1e-6) if λ1 > 1e-6 else 0
+        # Confidence: variance of eigenvalues
+        confidences[i] = np.var(eigvals)
+
+    # Normalize and fuse
+    norm = lambda x: (x - np.min(x)) / (np.ptp(x) + 1e-6)
+    s_spec = norm(spectral_sal)
+    s_plan = norm(planarity_scores)
+    conf = norm(confidences)
+
+    fused = (conf * s_spec + (1 - conf) * s_plan) / (conf + (1 - conf) + 1e-6)
+    return fused
+
+def filter_salient_non_ground(points, ground_mask, saliency, sal_thresh=0.5):
+    """Filter high-saliency points that are not on the ground."""
+    salient_mask = saliency > sal_thresh
+    return salient_mask & (~ground_mask)
+
+################################# END Testing #################################
+
 def main():
     base_dir = os.path.dirname(__file__)
 
@@ -300,7 +345,7 @@ def main():
         points = load_velodyne_bin(bin_path)
 
         start = time()
-        (road_mask, _, _) = my_road_from_pcd_is(
+        (road_mask, ground_points, plane) = my_road_from_pcd_is(
             points, Tr_velo_to_cam, P2, image.shape,
             filter = True
         )
@@ -310,6 +355,15 @@ def main():
         overlay = overlay_mask(
             image, road_mask, color = (255, 0, 0), alpha = 0.5
         )
+
+        ############### Testing ###############
+        ground_mask = np.isin(points, ground_points).all(axis=1)
+        saliency = compute_adaptive_saliency(points, k=20)
+        sidewalk_mask = filter_salient_non_ground(points, ground_mask, saliency, sal_thresh=0.5)
+
+        sidewalk_mask_img = project_points_to_image(points[sidewalk_mask], Tr_velo_to_cam, P2, image.shape)
+        overlay = overlay_mask(overlay, sidewalk_mask_img, color=(255, 0, 255), alpha=0.6)
+        ############### END Testing ###############
 
         cv2.imshow('Μάσκα από LiDAR', overlay)
         cv2.waitKey(0)
