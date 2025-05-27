@@ -35,8 +35,15 @@ if not errorlevel 1 (
     timeout /t 10 /nobreak
 )
 
-:: Activate Conda environment
-call C:\Users\nick1\anaconda3\Scripts\activate.bat carla-911
+:: Activate Conda environment (try user install first, fallback to global)
+if exist "C:\Users\nick1\anaconda3\Scripts\activate.bat" (
+    call "C:\Users\nick1\anaconda3\Scripts\activate.bat" carla-911
+) else if exist "C:\ProgramData\anaconda3\Scripts\activate.bat" (
+    call "C:\ProgramData\anaconda3\Scripts\activate.bat" carla-911
+) else (
+    echo [ERROR] Could not find Anaconda activate.bat
+    exit /b 1
+)
 
 :: Run the Python Script
 echo.
