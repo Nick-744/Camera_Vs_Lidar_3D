@@ -226,8 +226,7 @@ def main():
                 raw_lidar_points,
                 Tr_velo_to_cam,
                 P2,
-                (HEIGHT, WIDTH),
-                apply_filters = False
+                (HEIGHT, WIDTH)
             )
 
             # Εφαρμογή μάσκας στο display

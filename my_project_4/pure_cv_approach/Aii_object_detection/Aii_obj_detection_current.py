@@ -254,7 +254,7 @@ def detect_obstacles(left_gray:      np.ndarray,
 
     # Φιλτράρισμα boxes με βάση road mask!
     road_mask = project_points_to_mask(ground_pts, calib, original_shape)
-    road_mask_cleaned = post_process_mask(road_mask)
+    road_mask_cleaned = post_process_mask(road_mask, min_area = 16000)
     boxes = filter_boxes_by_road_mask(
         boxes,
         road_mask_cleaned,
