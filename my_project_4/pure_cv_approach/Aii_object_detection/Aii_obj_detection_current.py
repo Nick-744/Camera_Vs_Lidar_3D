@@ -7,6 +7,7 @@ from Ai_road_finder.Ai_from_disparity import *
 from sklearn.cluster import (MiniBatchKMeans, DBSCAN)
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
+from typing import Dict # For Python 3.7.1 error fix!
 from time import time
 import open3d as o3d
 import numpy as np
@@ -73,7 +74,7 @@ def hybrid_cluster_parallel(points:         np.ndarray,
     return final_labels;
 
 def group_clusters(points: np.ndarray,
-                   labels: np.ndarray) -> dict[int, np.ndarray]:
+                   labels: np.ndarray) -> Dict[int, np.ndarray]:
     '''
     Ομαδοποιεί τα σημεία σε clusters με βάση τις ετικέτες τους!
     '''

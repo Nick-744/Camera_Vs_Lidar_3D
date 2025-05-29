@@ -31,7 +31,7 @@ import carla
 latest_rgb = {'frame': None}
 raw_lidar_points = None
 
-# --- Helper functions
+# --- Helpers
 def get_camera_intrinsic_matrix(width:   int,
                                 height:  int,
                                 fov_deg: float) -> np.ndarray:
