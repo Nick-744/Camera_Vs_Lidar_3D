@@ -146,15 +146,21 @@ def project_points_to_mask(points:      np.ndarray,
 
     return mask;
 
-def detect_ground_mask(left_gray:      np.ndarray,
-                       right_gray:     np.ndarray,
-                       original_shape: tuple,
-                       calib:          dict,
-                       crop_bottom:    bool = True,
-                       debug:          bool = False) -> np.ndarray:
+def detect_ground_mask(left_gray:        np.ndarray,
+                       right_gray:       np.ndarray,
+                       original_shape:   tuple,
+                       calib:            dict,
+                       ransac_threshold: float = 0.02,
+                       crop_bottom:      bool = True,
+                       debug:            bool = False) -> np.ndarray:
+    '''
+    Εξαγωγή μάσκας δρόμου από disparity map μέσω RANSAC.
+    '''
     disparity = compute_disparity(left_gray, right_gray, show = debug)
     points = point_cloud_from_disparity(disparity, calib)
-    (_, ground_pts, _) = ransac_ground(points, show = debug)
+    (_, ground_pts, _) = ransac_ground(
+        points, distance_threshold = ransac_threshold, show = debug
+    )
 
     return project_points_to_mask(
         ground_pts, calib, original_shape, crop_bottom

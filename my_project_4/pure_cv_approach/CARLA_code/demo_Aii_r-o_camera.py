@@ -38,11 +38,7 @@ ai_from_disparity_path = os.path.abspath(
     os.path.join('..', 'Ai_road_finder')
 )
 sys.path.append(ai_from_disparity_path)
-from Ai_from_disparity import (
-    compute_disparity, point_cloud_from_disparity,
-    ransac_ground, project_points_to_mask,
-    post_process_mask
-)
+from Ai_from_disparity import (detect_ground_mask, post_process_mask)
 
 # --- Image buffer
 latest_images = {'left': None, 'right': None}
@@ -103,27 +99,21 @@ def main():
             if latest_images['left'] is None or latest_images['right'] is None:
                 continue
 
-            left_img  = latest_images['left']
-            right_img = latest_images['right']
+            left_color = latest_images['left'].copy()
+            left_gray = cv2.cvtColor(left_color, cv2.COLOR_BGR2GRAY)
+            right_gray = cv2.cvtColor(latest_images['right'].copy(), cv2.COLOR_BGR2GRAY)
 
-            # --- Pre-processing ---------------------------------------------------
-            gray_l = cv2.cvtColor(left_img,  cv2.COLOR_BGR2GRAY)
-            gray_r = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
-
-            # --- Disparity --------------------------------------------------------
-            disp = compute_disparity(gray_l, gray_r)
-
-            # --- 3-D reconstruction ---------------------------------------------
-            pts = point_cloud_from_disparity(disp, calib)
-
-            # --- Ground plane -----------------------------------------------------
-            _, ground_pts, _ = ransac_ground(pts, distance_threshold=5)
-
-            # --- Projection back to image ----------------------------------------
-            mask = project_points_to_mask(ground_pts, calib, left_img.shape)
+            mask = detect_ground_mask(
+                left_gray,
+                right_gray,
+                left_color.shape,
+                calib,
+                ransac_threshold = 6,
+                #crop_bottom = True
+            )
 
             mask = post_process_mask(mask, min_area=2000, kernel_size=5)
-            vis = overlay_mask(left_img.copy(), mask)
+            vis = overlay_mask(left_color, mask)
 
             cv2.imshow('Stereo Aii – Road detection', vis)
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -144,6 +134,6 @@ def main():
         cv2.destroyAllWindows()
         print('\n[INFO] Shutdown complete.')
 
-# ---------------------------------------------------------------------------
+
 if __name__ == '__main__':
     main()
