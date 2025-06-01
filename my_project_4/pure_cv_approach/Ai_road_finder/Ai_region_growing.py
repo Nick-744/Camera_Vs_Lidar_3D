@@ -576,8 +576,12 @@ def compute_c1_channel(image_color: np.ndarray) -> np.ndarray:
 
 def main():
     base_dir = os.path.dirname(__file__)
-    model = None #DeepLabRoadSegmentor()
+
+    model = None
+    # model = DeepLabRoadSegmentor()
+
     METHOD = 'grabcut_fast'
+    
     image_type = 'um'
     dataset_type = 'testing'
     #dataset_type = 'training'

@@ -87,13 +87,13 @@ def main():
     world.tick() # Για να έχουνε 'υπάρξει' στον κόσμο!
     K  = get_camera_intrinsic_matrix(WIDTH, HEIGHT, FOV)
     P2 = np.hstack([K, np.zeros((3, 1))]) # P2 = [K | 0]
+    f  = P2[0, 0]
 
     # Compute KITTI-style right camera projection matrix
     # Μετατροπή από το αριστερό στο δεξί σύστημα αναφοράς {camera space}
     T  = np.array([[-baseline], [0], [0]])
     P3 = np.hstack([K, K @ T]) # P3 = K · [I | t]
-
-    f = P2[0, 0]
+    
     calib = {
         'f':  f,
         'cx': P2[0, 2],
