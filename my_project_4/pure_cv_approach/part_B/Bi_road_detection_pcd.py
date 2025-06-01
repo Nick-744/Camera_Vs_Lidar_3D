@@ -276,7 +276,7 @@ def load_calibration(calib_path: str) -> tuple:
     return (Tr_velo_to_cam, P2);
 
 ############################################### Testing ###############################################
-from sklearn.neighbors import KDTree
+# from sklearn.neighbors import KDTree
 
 def region_growing_on_height_band(points, plane, min_h, max_h, radius=0.4, angle_thresh_deg=15.0, min_cluster_size=100):
     a, b, c, d = plane

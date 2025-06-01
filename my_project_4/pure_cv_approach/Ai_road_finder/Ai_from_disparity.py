@@ -29,7 +29,8 @@ def parse_kitti_calib(file_path: str) -> dict:
 
 # --- Υπολογισμός μάσκας / Εύρεση δρόμου ---
 def compute_disparity(left_gray:  np.ndarray,
-                      right_gray: np.ndarray) -> np.ndarray:
+                      right_gray: np.ndarray,
+                      show:       bool = False) -> np.ndarray:
     # https://docs.opencv.org/4.x/d2/d85/classcv_1_1StereoSGBM.html
     block_size = 5
     block_size_squared = block_size * block_size
@@ -47,11 +48,19 @@ def compute_disparity(left_gray:  np.ndarray,
         preFilterCap      = 63,
         mode              = cv2.STEREO_SGBM_MODE_SGBM_3WAY
     )
-
+    
     # r / 16., λόγω του εσωτερικού τρόπου υπολογισμού [πράξεις με int]!
-    return stereo.compute(
+    disparity = stereo.compute(
         left_gray, right_gray
     ).astype(np.float32) / 16.;
+
+    if show:
+        disp_vis = cv2.normalize(disparity, None, 0, 255, cv2.NORM_MINMAX)
+        disp_vis = disp_vis.astype(np.uint8)
+        cv2.imshow('Disparity Map - Debug', disp_vis)
+        cv2.waitKey(1)
+
+    return disparity;
 
 def point_cloud_from_disparity(disparity: np.ndarray,
                                calib:     dict) -> np.ndarray:
