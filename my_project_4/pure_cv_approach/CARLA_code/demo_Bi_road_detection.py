@@ -8,10 +8,8 @@ import numpy as np
 from datetime import datetime
 
 from carla_helpers import (
-    setup_CARLA,
-    setup_camera,
-    get_transform_matrix,
-    get_camera_intrinsic_matrix,
+    setup_CARLA, setup_camera,
+    get_transform_matrix, get_camera_intrinsic_matrix,
     overlay_mask
 )
 

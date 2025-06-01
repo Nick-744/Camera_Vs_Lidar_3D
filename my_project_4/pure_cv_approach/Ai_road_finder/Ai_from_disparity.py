@@ -152,7 +152,7 @@ def detect_ground_mask(left_gray:      np.ndarray,
                        calib:          dict,
                        crop_bottom:    bool = True,
                        debug:          bool = False) -> np.ndarray:
-    disparity = compute_disparity(left_gray, right_gray)
+    disparity = compute_disparity(left_gray, right_gray, show = debug)
     points = point_cloud_from_disparity(disparity, calib)
     (_, ground_pts, _) = ransac_ground(points, show = debug)
 
