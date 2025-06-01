@@ -3,3 +3,4 @@ __pycache__
 KITTI
 CARLA_0.9.11
 my_project_4/pure_cv_approach/Aii_object_detection/yolov5/
+yolov5s.pt
