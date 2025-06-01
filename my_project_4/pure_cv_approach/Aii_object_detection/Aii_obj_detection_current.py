@@ -267,48 +267,65 @@ def detect_obstacles(left_gray:      np.ndarray,
     return (boxes, road_mask, road_mask_cleaned);
 
 # --- Ανίχνευση εμποδίων με YOLO ---
-yolo_model = None
-def detect_obstacles_yolo(left_color: np.ndarray,
-                          left_gray:  np.ndarray,
-                          right_gray: np.ndarray,
-                          calib:      dict,) -> tuple:
-    '''
-    Ανίχνευση εμποδίων μέσω YOLO! Εύρεση μάσκας μέσω disparity.
+class YOLODetector:
+    ''' Κυρίως για λόγους ταχύτητας κατά την εκτέλεση CARLA! '''
+    def __init__(self, model_name: str = 'yolov5s', conf: float = 0.25):
+        import torch
+        import warnings
+        warnings.filterwarnings('ignore', category=FutureWarning)
 
-    Returns:
-    - boxes:
-    Λίστα με [x1, y1, x2, y2] για κάθε αντικείμενο.
-    - road_mask:
-    Βάση της υλοποίησης στο Ai_from_disparity.py!
-    - road_mask_cleaned:
-    Εφαρμογή της συνάρτησης post_process_mask στο road_mask.
-    '''
-    # Εκτέλεση YOLO
-    results = yolo_model(left_color)
-    preds = results.pandas().xyxy[0] # DataFrame
+        self.model = torch.hub.load(
+            'ultralytics/yolov5', model_name, pretrained = True
+        )
+        self.model.conf = conf
 
-    # Φιλτράρισμα για τα classes που μας ενδιαφέρουν!
-    allowed_classes = {'person', 'car', 'truck', 'bus', 'motorcycle'}
-    boxes = []
-    for (_, row) in preds.iterrows():
-        if row['name'] in allowed_classes:
-            (x1, y1, x2, y2) = map(int,
-                [row['xmin'], row['ymin'], row['xmax'], row['ymax']]
-            )
-            boxes.append([x1, y1, x2, y2])
+        # Φιλτράρισμα για τα classes που μας ενδιαφέρουν!
+        self.allowed_classes = {
+            'person', 'car', 'truck', 'bus', 'motorcycle'
+        }
 
-    road_mask = detect_ground_mask(
-        left_gray,
-        right_gray,
-        left_color.shape,
-        calib,
-        crop_bottom = True
-    )
-    road_mask_cleaned = post_process_mask(
-        road_mask, min_area = 15000, kernel_size = 7
-    )
+        return;
 
-    return (boxes, road_mask, road_mask_cleaned);
+    def detect(self,
+               left_color: np.ndarray,
+               left_gray:  np.ndarray,
+               right_gray: np.ndarray,
+               calib:      dict,) -> tuple:
+        '''
+        Ανίχνευση εμποδίων μέσω YOLO! Εύρεση μάσκας μέσω disparity.
+
+        Returns:
+        - boxes:
+        Λίστα με [x1, y1, x2, y2] για κάθε αντικείμενο.
+        - road_mask:
+        Βάση της υλοποίησης στο Ai_from_disparity.py!
+        - road_mask_cleaned:
+        Εφαρμογή της συνάρτησης post_process_mask στο road_mask.
+        '''
+        # Εκτέλεση YOLO
+        results = self.model(left_color)
+        preds = results.pandas().xyxy[0] # DataFrame
+
+        boxes = []
+        for (_, row) in preds.iterrows():
+            if row['name'] in self.allowed_classes:
+                (x1, y1, x2, y2) = map(int,
+                    [row['xmin'], row['ymin'], row['xmax'], row['ymax']]
+                )
+                boxes.append([x1, y1, x2, y2])
+
+        road_mask = detect_ground_mask(
+            left_gray,
+            right_gray,
+            left_color.shape,
+            calib,
+            crop_bottom = True
+        )
+        road_mask_cleaned = post_process_mask(
+            road_mask, min_area = 15000, kernel_size = 7
+        )
+
+        return (boxes, road_mask, road_mask_cleaned);
 
 # --- Helpers ---
 def draw_bboxes(img:   np.ndarray,
@@ -353,16 +370,8 @@ def main():
     use_yolo = False
     use_yolo = True
     if use_yolo:
-        import torch
-        import warnings
-        warnings.filterwarnings('ignore', category = FutureWarning)
-
-        global yolo_model
-
-        yolo_model = torch.hub.load(
-            'ultralytics/yolov5',
-            'yolov5s',
-            pretrained = True
+        yolo_detector = YOLODetector(
+            model_name = 'yolov5s', conf = 0.25
         )
 
     image_type = 'um'
@@ -401,7 +410,7 @@ def main():
 
         start = time()
         if use_yolo:
-            (boxes, _, road_mask_cleaned) = detect_obstacles_yolo(
+            (boxes, _, road_mask_cleaned) = yolo_detector.detect(
                 left_color,
                 left_gray_cropped,
                 right_gray_cropped,

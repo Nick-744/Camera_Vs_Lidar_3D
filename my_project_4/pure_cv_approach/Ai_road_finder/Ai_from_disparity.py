@@ -249,14 +249,14 @@ def main():
         right_gray = cv2.imread(right_path, cv2.IMREAD_GRAYSCALE)
 
         # Αφαίρεση του άνω μισού της εικόνας (γρηγορότερο disparity!)
-        left_gray  = crop_bottom_half(left_gray)
-        right_gray = crop_bottom_half(right_gray)
+        left_gray_cropped  = crop_bottom_half(left_gray)
+        right_gray_cropped = crop_bottom_half(right_gray)
 
         # Βασική εκτέλεση
         start = time()
         mask = detect_ground_mask(
-            left_gray,
-            right_gray,
+            left_gray_cropped,
+            right_gray_cropped,
             left_color.shape,
             calib,
             crop_bottom = True
@@ -266,7 +266,7 @@ def main():
         # min_area = 15000 <-> 20000 καλύτερα αποτελέσματα!
         mask_cleaned = post_process_mask(
             mask, min_area = 15000, kernel_size = 7
-        )
+        ) # Post-processing του mask για καλύτερη εμφάνιση!
         result = overlay_mask(left_color, mask_cleaned)
 
         cv2.imshow('Overlay', result)

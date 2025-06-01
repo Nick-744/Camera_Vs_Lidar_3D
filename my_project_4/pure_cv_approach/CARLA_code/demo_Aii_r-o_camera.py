@@ -2,13 +2,13 @@
 # r-o: Road and Obstacles detection using only stereo camera setup!
 
 import os
+import cv2
 import sys
 import glob
+import numpy as np
 from datetime import datetime
 
-import cv2
-import numpy as np
-
+# --- Imports ---
 from carla_helpers import (
     get_camera_intrinsic_matrix,
     setup_camera,
@@ -16,14 +16,18 @@ from carla_helpers import (
     setup_CARLA
 )
 
-ai_from_disparity_path = os.path.abspath(
+part_A_road_finder_module_path = os.path.abspath(
     os.path.join('..', 'Ai_road_finder')
 )
-sys.path.append(ai_from_disparity_path)
-from Ai_from_disparity import (
-    detect_ground_mask,
-    post_process_mask,
-    crop_bottom_half
+sys.path.append(part_A_road_finder_module_path)
+from Ai_from_disparity import crop_bottom_half
+
+part_A_object_detection_module_path = os.path.abspath(
+    os.path.join('..', 'Aii_object_detection')
+)
+sys.path.append(part_A_object_detection_module_path)
+from Aii_obj_detection_current import (
+    YOLODetector, draw_bboxes
 )
 
 # --- CARLA egg setup
@@ -43,10 +47,10 @@ except:
     sys.exit(1);
 import carla
 
-# --- Image buffer
+# --- Image buffer ---
 latest_images = {'left': None, 'right': None}
 
-# --- Callbacks
+# --- Callbacks ---
 def _cam_callback(buffer_name):
     ''' Constructor wrapper για δημιουργία image callback '''
     def _cb(image):
@@ -57,7 +61,7 @@ def _cam_callback(buffer_name):
     return _cb;
 
 def main():
-    world, original_settings = setup_CARLA()
+    (world, original_settings) = setup_CARLA()
 
     blueprint_library = world.get_blueprint_library()
     vehicle_bp = blueprint_library.filter('model3')[0]
@@ -101,6 +105,8 @@ def main():
         'Tx': -(P3[0, 3] - P2[0, 3]) / f
     }
 
+    yolo_detector = YOLODetector(model_name = 'yolov5s', conf = 0.25)
+
     dt0 = datetime.now()
     try:
         while True:
@@ -116,23 +122,21 @@ def main():
                 latest_images['right'].copy(), cv2.COLOR_BGR2GRAY
             )
 
-            left_gray  = crop_bottom_half(left_gray)
-            right_gray = crop_bottom_half(right_gray)
+            left_gray_cropped  = crop_bottom_half(left_gray)
+            right_gray_cropped = crop_bottom_half(right_gray)
 
-            mask = detect_ground_mask(
-                left_gray,
-                right_gray,
-                left_color.shape,
-                calib,
-                ransac_threshold = 0.008,
-                crop_bottom = True
+            (boxes, _, road_mask_cleaned) = yolo_detector.detect(
+                left_color,
+                left_gray_cropped,
+                right_gray_cropped,
+                calib
             )
+            if np.sum(road_mask_cleaned) == 0:
+                continue;
 
-            mask = post_process_mask(
-                mask, min_area = 2000, kernel_size = 5
-            )
-            if np.sum(mask) == 0: continue;
-            vis = overlay_mask(left_color, mask)
+            # --- Ζωγραφικηηηή ---
+            draw_bboxes(left_color, boxes)
+            vis = overlay_mask(left_color, road_mask_cleaned)
 
             cv2.imshow('Stereo Aii – Road detection', vis)
             if cv2.waitKey(1) & 0xFF == ord('q'):

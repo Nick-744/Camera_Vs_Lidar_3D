@@ -7,6 +7,7 @@ import glob
 import numpy as np
 from datetime import datetime
 
+# --- Imports ---
 from carla_helpers import (
     get_camera_intrinsic_matrix,
     get_transform_matrix,
@@ -16,8 +17,8 @@ from carla_helpers import (
 )
 
 # Προσθήκη του path για την συνάρτηση εύρεσης του δρόμου από το pcd!
-bi_road_module_path = os.path.abspath(os.path.join('..', 'part_B'))
-sys.path.append(bi_road_module_path)
+part_B_module_path = os.path.abspath(os.path.join('..', 'part_B'))
+sys.path.append(part_B_module_path)
 from Bi_road_detection_pcd import my_road_from_pcd_is
 
 # --- CARLA egg setup
