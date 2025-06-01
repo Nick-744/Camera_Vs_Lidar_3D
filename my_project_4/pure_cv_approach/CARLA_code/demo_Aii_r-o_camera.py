@@ -20,7 +20,11 @@ ai_from_disparity_path = os.path.abspath(
     os.path.join('..', 'Ai_road_finder')
 )
 sys.path.append(ai_from_disparity_path)
-from Ai_from_disparity import (detect_ground_mask, post_process_mask)
+from Ai_from_disparity import (
+    detect_ground_mask,
+    post_process_mask,
+    crop_bottom_half
+)
 
 # --- CARLA egg setup
 try:
@@ -44,15 +48,13 @@ latest_images = {'left': None, 'right': None}
 
 # --- Callbacks
 def _cam_callback(buffer_name):
-    '''Factory creating a CARLA image callback that stores images in RAM.'''
+    ''' Constructor wrapper για δημιουργία image callback '''
     def _cb(image):
         array = np.frombuffer(image.raw_data, dtype = np.uint8)
         array = array.reshape((image.height, image.width, 4))[:, :, :3]
         latest_images[buffer_name] = array
-
-        return
     
-    return _cb
+    return _cb;
 
 def main():
     world, original_settings = setup_CARLA()
@@ -70,23 +72,23 @@ def main():
         world, blueprint_library, vehicle,
         WIDTH, HEIGHT, FOV
     )
+    baseline = 0.54 # Η απόσταση μεταξύ των 2 καμερών!
     camera_3 = setup_camera(
         world,
         blueprint_library,
         vehicle,
         WIDTH, HEIGHT, FOV,
-        x_arg = 1.5 + 0.54 # or y_arg???
+        y_arg = baseline
     )
 
     camera_2.listen(_cam_callback('left'))
     camera_3.listen(_cam_callback('right'))
     
     world.tick() # Για να έχουνε 'υπάρξει' στον κόσμο!
-    K = get_camera_intrinsic_matrix(WIDTH, HEIGHT, FOV)
+    K  = get_camera_intrinsic_matrix(WIDTH, HEIGHT, FOV)
     P2 = np.hstack([K, np.zeros((3, 1))]) # P2 = [K | 0]
 
     # Compute KITTI-style right camera projection matrix
-    baseline = 0.54 # Πρέπει να είναι το ίδιο με το y_arg του camera 3!
     # Μετατροπή από το αριστερό στο δεξί σύστημα αναφοράς {camera space}
     T  = np.array([[-baseline], [0], [0]])
     P3 = np.hstack([K, K @ T]) # P3 = K · [I | t]
@@ -114,23 +116,27 @@ def main():
                 latest_images['right'].copy(), cv2.COLOR_BGR2GRAY
             )
 
+            left_gray  = crop_bottom_half(left_gray)
+            right_gray = crop_bottom_half(right_gray)
+
             mask = detect_ground_mask(
                 left_gray,
                 right_gray,
                 left_color.shape,
                 calib,
-                ransac_threshold = 6,
-                #crop_bottom = True
+                ransac_threshold = 0.008,
+                crop_bottom = True
             )
 
             mask = post_process_mask(
                 mask, min_area = 2000, kernel_size = 5
             )
+            if np.sum(mask) == 0: continue;
             vis = overlay_mask(left_color, mask)
 
             cv2.imshow('Stereo Aii – Road detection', vis)
             if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                break;
 
             # FPS
             dt1 = datetime.now()
@@ -138,7 +144,6 @@ def main():
             print(f'\rFPS: {fps:.2f}', end = '')
             dt0 = dt1
             
-
     except KeyboardInterrupt:
         print('\nΔιακοπή')
     finally:
@@ -148,6 +153,8 @@ def main():
         vehicle.destroy()
         cv2.destroyAllWindows()
         print('\nΕπιτυχής εκκαθάριση!')
+
+    return;
 
 if __name__ == '__main__':
     main()
