@@ -4,7 +4,7 @@ import cv2
 import sys
 import os
 
-# --- CARLA egg setup
+# CARLA egg setup | Δεν θέλω να φαίνονται υπογραμμίσεις στο αρχείο...
 try:
     carla_egg_path = glob.glob(os.path.abspath(
         os.path.join('..', '..',
@@ -23,6 +23,8 @@ import carla
 
 # --- Setups
 def setup_CARLA() -> tuple:
+    ''' Ρυμίζει το CARLA world κατάλληλα και τον
+        επιστρέφει, μαζί με τις default ρυθμίσεις του. '''
     client = carla.Client('localhost', 2000)
     client.set_timeout(10.)
 
@@ -48,13 +50,14 @@ def setup_camera(world:             carla.World,
                  WIDTH:             int,
                  HEIGHT:            int,
                  FOV:               float,
-                 y_arg:             int = 0) -> carla.Sensor:
+                 x_arg:             float = 1.5,
+                 y_arg:             float = 0.) -> carla.Sensor:
     camera_bp = blueprint_library.find('sensor.camera.rgb')
     camera_bp.set_attribute('image_size_x', str(WIDTH))
     camera_bp.set_attribute('image_size_y', str(HEIGHT))
     camera_bp.set_attribute('fov', str(FOV))
     camera_transform = carla.Transform(
-        carla.Location(x = 1.5, y = y_arg, z = 1.8)
+        carla.Location(x = x_arg, y = y_arg, z = 1.8)
     )
     camera = world.spawn_actor(
         camera_bp, camera_transform, attach_to = vehicle

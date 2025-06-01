@@ -1,20 +1,26 @@
 # demo_Aii_r-o_camera.py
 # r-o: Road and Obstacles detection using only stereo camera setup!
 
-import glob
 import os
 import sys
+import glob
 from datetime import datetime
 
 import cv2
 import numpy as np
 
-from carla_helpers import (  # type: ignore
-    setup_CARLA,
-    setup_camera,
+from carla_helpers import (
     get_camera_intrinsic_matrix,
-    overlay_mask
+    setup_camera,
+    overlay_mask,
+    setup_CARLA
 )
+
+ai_from_disparity_path = os.path.abspath(
+    os.path.join('..', 'Ai_road_finder')
+)
+sys.path.append(ai_from_disparity_path)
+from Ai_from_disparity import (detect_ground_mask, post_process_mask)
 
 # --- CARLA egg setup
 try:
@@ -33,27 +39,22 @@ except:
     sys.exit(1);
 import carla
 
-# Import Aii module
-ai_from_disparity_path = os.path.abspath(
-    os.path.join('..', 'Ai_road_finder')
-)
-sys.path.append(ai_from_disparity_path)
-from Ai_from_disparity import (detect_ground_mask, post_process_mask)
-
 # --- Image buffer
 latest_images = {'left': None, 'right': None}
 
 # --- Callbacks
 def _cam_callback(buffer_name):
-    """Factory creating a CARLA image callback that stores images in RAM."""
+    '''Factory creating a CARLA image callback that stores images in RAM.'''
     def _cb(image):
-        array = np.frombuffer(image.raw_data, dtype=np.uint8)
+        array = np.frombuffer(image.raw_data, dtype = np.uint8)
         array = array.reshape((image.height, image.width, 4))[:, :, :3]
         latest_images[buffer_name] = array
+
+        return
+    
     return _cb
 
 def main():
-    # 1.  Spawn world & ego-vehicle --------------------------------------------------
     world, original_settings = setup_CARLA()
 
     blueprint_library = world.get_blueprint_library()
@@ -62,46 +63,56 @@ def main():
     vehicle = world.spawn_actor(vehicle_bp, spawn_point)
     vehicle.set_autopilot(True)
 
-    # 2.  Stereo cameras ------------------------------------------------------------
+    # --- Stereo cameras
     (WIDTH, HEIGHT, FOV) = (600, 600, 90)
-    cam_left  = setup_camera(
-        world, blueprint_library, vehicle, WIDTH, HEIGHT, FOV
+    # https://www.cvlibs.net/datasets/kitti/setup.php
+    camera_2 = setup_camera(
+        world, blueprint_library, vehicle,
+        WIDTH, HEIGHT, FOV
     )
-    cam_right = setup_camera(
-        world, blueprint_library, vehicle, WIDTH, HEIGHT, FOV, y_arg = 0.54
+    camera_3 = setup_camera(
+        world,
+        blueprint_library,
+        vehicle,
+        WIDTH, HEIGHT, FOV,
+        x_arg = 1.5 + 0.54 # or y_arg???
     )
 
-    cam_left.listen(_cam_callback('left'))
-    cam_right.listen(_cam_callback('right'))
-    world.tick()  # let sensors spin up
-
-    # 3.  Intrinsics & stereo calibration ------------------------------------------
+    camera_2.listen(_cam_callback('left'))
+    camera_3.listen(_cam_callback('right'))
+    
+    world.tick() # Για να έχουνε 'υπάρξει' στον κόσμο!
     K = get_camera_intrinsic_matrix(WIDTH, HEIGHT, FOV)
     P2 = np.hstack([K, np.zeros((3, 1))]) # P2 = [K | 0]
 
     # Compute KITTI-style right camera projection matrix
-    baseline = 0.54 # Πρέπει να είναι το ίδιο με το y_arg του cam_right!
+    baseline = 0.54 # Πρέπει να είναι το ίδιο με το y_arg του camera 3!
     # Μετατροπή από το αριστερό στο δεξί σύστημα αναφοράς {camera space}
-    T = np.array([[-baseline], [0], [0]])
+    T  = np.array([[-baseline], [0], [0]])
     P3 = np.hstack([K, K @ T]) # P3 = K · [I | t]
 
-    f  = P2[0, 0]
-    cx = P2[0, 2]
-    cy = P2[1, 2]
-    Tx = -(P3[0, 3] - P2[0, 3]) / f
-    calib = {'f': f, 'cx': cx, 'cy': cy, 'Tx': Tx}
+    f = P2[0, 0]
+    calib = {
+        'f':  f,
+        'cx': P2[0, 2],
+        'cy': P2[1, 2],
+        'Tx': -(P3[0, 3] - P2[0, 3]) / f
+    }
 
-    prev_time = datetime.now()
+    dt0 = datetime.now()
     try:
         while True:
             world.tick()
 
-            if latest_images['left'] is None or latest_images['right'] is None:
-                continue
+            if latest_images['left'] is None or \
+                latest_images['right'] is None:
+                continue;
 
             left_color = latest_images['left'].copy()
-            left_gray = cv2.cvtColor(left_color, cv2.COLOR_BGR2GRAY)
-            right_gray = cv2.cvtColor(latest_images['right'].copy(), cv2.COLOR_BGR2GRAY)
+            left_gray  = cv2.cvtColor(left_color, cv2.COLOR_BGR2GRAY)
+            right_gray = cv2.cvtColor(
+                latest_images['right'].copy(), cv2.COLOR_BGR2GRAY
+            )
 
             mask = detect_ground_mask(
                 left_gray,
@@ -112,28 +123,31 @@ def main():
                 #crop_bottom = True
             )
 
-            mask = post_process_mask(mask, min_area=2000, kernel_size=5)
+            mask = post_process_mask(
+                mask, min_area = 2000, kernel_size = 5
+            )
             vis = overlay_mask(left_color, mask)
 
             cv2.imshow('Stereo Aii – Road detection', vis)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-            # --- FPS --------------------------------------------------------------
-            now = datetime.now()
-            fps = 1.0 / max((now - prev_time).total_seconds(), 1e-3)
-            prev_time = now
-            print(f'FPS: {fps:5.1f}', end='\r')
+            # FPS
+            dt1 = datetime.now()
+            fps = 1. / (dt1 - dt0).total_seconds()
+            print(f'\rFPS: {fps:.2f}', end = '')
+            dt0 = dt1
+            
 
+    except KeyboardInterrupt:
+        print('\nΔιακοπή')
     finally:
-        # -----------------------------------------------------------------------
         world.apply_settings(original_settings)
-        cam_left.destroy()
-        cam_right.destroy()
+        camera_2.destroy()
+        camera_3.destroy()
         vehicle.destroy()
         cv2.destroyAllWindows()
-        print('\n[INFO] Shutdown complete.')
-
+        print('\nΕπιτυχής εκκαθάριση!')
 
 if __name__ == '__main__':
     main()

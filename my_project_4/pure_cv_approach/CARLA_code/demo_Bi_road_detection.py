@@ -1,16 +1,18 @@
 # demo_Bi_road_detection.py
 
-import glob
 import os
 import sys
 import cv2
+import glob
 import numpy as np
 from datetime import datetime
 
 from carla_helpers import (
-    setup_CARLA, setup_camera,
-    get_transform_matrix, get_camera_intrinsic_matrix,
-    overlay_mask
+    get_camera_intrinsic_matrix,
+    get_transform_matrix,
+    setup_camera,
+    overlay_mask,
+    setup_CARLA
 )
 
 # Προσθήκη του path για την συνάρτηση εύρεσης του δρόμου από το pcd!
@@ -89,9 +91,7 @@ def main():
         world,
         blueprint_library,
         vehicle,
-        WIDTH,
-        HEIGHT,
-        FOV
+        WIDTH, HEIGHT, FOV
     )
     lidar = setup_lidar_sensor(world, blueprint_library, vehicle)
 
