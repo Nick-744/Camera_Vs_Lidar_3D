@@ -34,7 +34,7 @@ def setup_CARLA() -> tuple:
     #  '/Game/Carla/Maps/Town03', '/Game/Carla/Maps/Town03_Opt',
     #  '/Game/Carla/Maps/Town04', '/Game/Carla/Maps/Town04_Opt',
     #  '/Game/Carla/Maps/Town05', '/Game/Carla/Maps/Town05_Opt']
-    client.load_world('Town05')
+    # client.load_world('Town04_Opt')
 
     world = client.get_world()
     original_settings = world.get_settings()

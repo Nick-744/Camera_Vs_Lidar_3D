@@ -306,12 +306,19 @@ class YOLODetector:
         return;
 
     def detect(self,
-               left_color: np.ndarray,
-               left_gray:  np.ndarray,
-               right_gray: np.ndarray,
-               calib:      dict,) -> tuple:
+               left_color:     np.ndarray,
+               left_gray:      np.ndarray,
+               right_gray:     np.ndarray,
+               calib:          dict,
+               numDisparities: int = 128) -> tuple:
         '''
         Ανίχνευση εμποδίων μέσω YOLO! Εύρεση μάσκας μέσω disparity.
+
+        Args:
+         - left_gray_: Πρέπει να είναι cropped στο κάτω μισό της εικόνας,
+                       λόγω του crop_bottom = True στο detect_ground_mask!
+         - right_gray_: Ομοίως, cropped στο κάτω μισό της εικόνας!
+         - numDisparities_: Πρεέπει να είναι πολλαπλάσιο του 16!
 
         Returns:
         - boxes:
@@ -338,6 +345,7 @@ class YOLODetector:
             right_gray,
             left_color.shape,
             calib,
+            numDisparities = numDisparities,
             crop_bottom = True
         )
         road_mask_cleaned = post_process_mask(
@@ -389,7 +397,7 @@ def main():
     use_yolo = False
     use_yolo = True
     if use_yolo:
-        yolo_detector = YOLODetector(model_name = 'yolov5s', conf = 0.25)
+        yolo_detector = YOLODetector()
         print() # Για καλύτερη εμφάνιση!
 
     image_type   = 'um'

@@ -28,16 +28,18 @@ def parse_kitti_calib(file_path: str) -> dict:
     return {'f': f, 'cx': cx, 'cy': cy, 'Tx': Tx};
 
 # --- Υπολογισμός μάσκας / Εύρεση δρόμου ---
-def compute_disparity(left_gray:  np.ndarray,
-                      right_gray: np.ndarray,
-                      show:       bool = False) -> np.ndarray:
+def compute_disparity(left_gray:      np.ndarray,
+                      right_gray:     np.ndarray,
+                      numDisparities: int = 128,
+                      show:           bool = False) -> np.ndarray:
+    ''' - numDisparities: Πρέπει να είναι πολλαπλάσιο του 16! '''
     # https://docs.opencv.org/4.x/d2/d85/classcv_1_1StereoSGBM.html
     block_size = 5
     block_size_squared = block_size * block_size
 
     stereo = cv2.StereoSGBM_create(
         minDisparity      = 0,
-        numDisparities    = 128, # Πρέπει να είναι πολλαπλάσιο του 16!
+        numDisparities    = numDisparities,
         blockSize         = block_size,
         P1                = 8  * 3 * block_size_squared,
         P2                = 32 * 3 * block_size_squared,
@@ -150,16 +152,21 @@ def detect_ground_mask(left_gray:        np.ndarray,
                        right_gray:       np.ndarray,
                        original_shape:   tuple,
                        calib:            dict,
+                       numDisparities:   int = 128,
                        ransac_threshold: float = 0.02,
                        crop_bottom:      bool = True,
                        debug:            bool = False) -> np.ndarray:
     '''
     Εξαγωγή μάσκας δρόμου από disparity map μέσω RANSAC.
     '''
-    disparity = compute_disparity(left_gray, right_gray, show = debug)
+    disparity = compute_disparity(
+        left_gray, right_gray, numDisparities = numDisparities,
+        show = debug
+    )
     points = point_cloud_from_disparity(disparity, calib)
     (_, ground_pts, _) = ransac_ground(
-        points, distance_threshold = ransac_threshold, show = debug
+        points, distance_threshold = ransac_threshold,
+        show = debug
     )
 
     return project_points_to_mask(

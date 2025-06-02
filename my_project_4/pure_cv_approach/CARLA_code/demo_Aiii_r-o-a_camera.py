@@ -104,9 +104,7 @@ def main():
         'Tx': -(P3[0, 3] - P2[0, 3]) / f
     }
 
-    yolo_detector = YOLODetector(
-        model_name = 'yolov5s', conf = 0.25, source = 'pip'
-    )
+    yolo_detector = YOLODetector(source = 'pip')
 
     dt0 = datetime.now()
     try:
@@ -130,7 +128,8 @@ def main():
                 left_color,
                 left_gray_cropped,
                 right_gray_cropped,
-                calib
+                calib,
+                numDisparities = 80
             )
             if np.sum(road_mask_cleaned) == 0:
                 continue;
