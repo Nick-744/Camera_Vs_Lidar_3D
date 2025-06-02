@@ -28,6 +28,14 @@ def setup_CARLA() -> tuple:
     client = carla.Client('localhost', 2000)
     client.set_timeout(10.)
 
+    # Διάλεξε την πίστα στην οποία θα οδηγούμε!
+    # ['/Game/Carla/Maps/Town01', '/Game/Carla/Maps/Town01_Opt',
+    #  '/Game/Carla/Maps/Town02', '/Game/Carla/Maps/Town02_Opt',
+    #  '/Game/Carla/Maps/Town03', '/Game/Carla/Maps/Town03_Opt',
+    #  '/Game/Carla/Maps/Town04', '/Game/Carla/Maps/Town04_Opt',
+    #  '/Game/Carla/Maps/Town05', '/Game/Carla/Maps/Town05_Opt']
+    client.load_world('Town05')
+
     world = client.get_world()
     original_settings = world.get_settings()
 
