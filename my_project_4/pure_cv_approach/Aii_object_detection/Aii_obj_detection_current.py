@@ -272,7 +272,11 @@ class YOLODetector:
     def __init__(self, model_name: str = 'yolov5s', conf: float = 0.25):
         import torch
         import warnings
-        warnings.filterwarnings('ignore', category=FutureWarning)
+        warnings.filterwarnings(
+            'ignore',
+            category = FutureWarning,
+            message  = '.*torch.cuda.amp.autocast.*'
+        )
 
         self.model = torch.hub.load(
             'ultralytics/yolov5', model_name, pretrained = True

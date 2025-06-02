@@ -6,6 +6,7 @@ import numpy as np
 
 from Ai_road_finder.Ai_from_disparity import parse_kitti_calib
 from Aii_object_detection.Aii_obj_detection_current import (
+    YOLODetector,
     detect_obstacles,
     crop_bottom_half,
     overlay_mask,
@@ -107,6 +108,8 @@ def main():
     ldir = root / "data_road" / dataset / "image_2"
     rdir = root / "data_road_right" / dataset / "image_3"
 
+    yolo_detector = YOLODetector()
+
     for lp, rp in iter_pairs(ldir, rdir, f"{prefix}_*.png"):
         frame = cv2.imread(str(lp))
         if frame is None:
@@ -119,7 +122,12 @@ def main():
         l_crop = crop_bottom_half(l_gray)
         r_crop = crop_bottom_half(r_gray)
 
-        boxes, _, road_mask = detect_obstacles(l_crop, r_crop, frame.shape, calib)
+        boxes, _, road_mask = yolo_detector.detect(
+            left_color = frame,
+            left_gray = l_crop,
+            right_gray = r_crop,
+            calib = calib
+        )
 
         vis = overlay_mask(frame.copy(), road_mask, ROAD, alpha=0.5)
         draw_bboxes(vis, boxes)

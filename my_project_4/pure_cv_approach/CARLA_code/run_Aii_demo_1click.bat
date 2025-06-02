@@ -31,7 +31,7 @@ if not errorlevel 1 (
     echo [INFO] CARLA is already running. Skipping launch...
 ) else (
     echo [INFO] Starting CARLA Simulator from %CARLA_EXE% ...
-    start "" "%CARLA_EXE%" -quality-level=Low
+    start "" "%CARLA_EXE%"
     timeout /t 10 /nobreak
 )
 

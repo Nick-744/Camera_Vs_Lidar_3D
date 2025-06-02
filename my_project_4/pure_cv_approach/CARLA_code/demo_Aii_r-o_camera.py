@@ -16,18 +16,12 @@ from carla_helpers import (
     setup_CARLA
 )
 
-part_A_road_finder_module_path = os.path.abspath(
-    os.path.join('..', 'Ai_road_finder')
-)
-sys.path.append(part_A_road_finder_module_path)
-from Ai_from_disparity import crop_bottom_half
-
 part_A_object_detection_module_path = os.path.abspath(
     os.path.join('..', 'Aii_object_detection')
 )
 sys.path.append(part_A_object_detection_module_path)
 from Aii_obj_detection_current import (
-    YOLODetector, draw_bboxes
+    YOLODetector, crop_bottom_half, draw_bboxes
 )
 
 # --- CARLA egg setup
