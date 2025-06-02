@@ -7,7 +7,7 @@ set "CURRENT_DIR=%~dp0"
 :: Define paths relative to the current directory
 set "CARLA_DIR=%CURRENT_DIR%..\..\CARLA_0.9.11\WindowsNoEditor"
 set "CARLA_EXE=%CARLA_DIR%\CarlaUE4.exe"
-set "PYTHON_SCRIPT=%CURRENT_DIR%demo_Aii_r-o_camera.py"
+set "PYTHON_SCRIPT=%CURRENT_DIR%demo_Aiii_r-o-a_camera.py"
 
 :: Normalize paths
 for %%I in ("%CARLA_DIR%") do set "CARLA_DIR=%%~fI"

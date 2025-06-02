@@ -1,5 +1,5 @@
-# demo_Aii_r-o_camera.py
-# r-o: Road and Obstacles detection using only stereo camera setup!
+# demo_Aiii_r-o-a_camera.py
+# r-o-a: Road, Obstacles and Arrow detection using only stereo camera setup!
 
 import os
 import cv2
@@ -23,6 +23,11 @@ sys.path.append(part_A_object_detection_module_path)
 from Aii_obj_detection_current import (
     YOLODetector, crop_bottom_half, draw_bboxes
 )
+
+# Import για το διάνυσμα κίνησης!
+parrent_path = os.path.abspath(os.path.join('..'))
+sys.path.append(parrent_path)
+from Aiii_arrowMove import draw_arrow_right_half
 
 # --- CARLA egg setup
 try:
@@ -132,7 +137,13 @@ def main():
 
             # --- Ζωγραφικηηηή ---
             draw_bboxes(left_color, boxes)
-            vis = overlay_mask(left_color, road_mask_cleaned)
+            temp = overlay_mask(left_color, road_mask_cleaned)
+            vis = draw_arrow_right_half(
+                temp,
+                road_mask_cleaned,
+                boxes,
+                rj_filter = False
+            )
 
             cv2.imshow('Stereo Aii – Road detection', vis)
             if cv2.waitKey(1) & 0xFF == ord('q'):

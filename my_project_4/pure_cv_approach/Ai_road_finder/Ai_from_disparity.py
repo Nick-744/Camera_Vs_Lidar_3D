@@ -222,7 +222,7 @@ def post_process_mask(mask:        np.ndarray,
 def main():
     base_dir = os.path.dirname(__file__)
     
-    image_type = 'um'
+    image_type   = 'um'
     dataset_type = 'testing'
     dataset_type = 'training'
 
