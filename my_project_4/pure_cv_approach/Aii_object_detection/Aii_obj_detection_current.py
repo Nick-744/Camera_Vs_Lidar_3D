@@ -269,18 +269,33 @@ def detect_obstacles(left_gray:      np.ndarray,
 # --- Ανίχνευση εμποδίων με YOLO ---
 class YOLODetector:
     ''' Κυρίως για λόγους ταχύτητας κατά την εκτέλεση CARLA! '''
-    def __init__(self, model_name: str = 'yolov5s', conf: float = 0.25):
-        import torch
-        import warnings
-        warnings.filterwarnings(
-            'ignore',
-            category = FutureWarning,
-            message  = '.*torch.cuda.amp.autocast.*'
-        )
 
-        self.model = torch.hub.load(
-            'ultralytics/yolov5', model_name, pretrained = True
-        )
+    def __init__(self,
+                 model_name: str = 'yolov5s',
+                 conf:       float = 0.25,
+                 source:     str = 'hub') -> None:
+        if source == 'hub':
+            import torch
+            import warnings
+            warnings.filterwarnings(
+                'ignore',
+                category = FutureWarning,
+                message  = '.*torch.cuda.amp.autocast.*'
+            )
+
+            self.model = torch.hub.load(
+                'ultralytics/yolov5', model_name, pretrained = True
+            )
+        elif source == 'pip':
+            import yolov5
+            
+            model_path = os.path.join(
+                os.path.dirname(__file__), '..', '..', '..',
+                'yolov5s.pt'
+            )
+            self.model = yolov5.load(model_path)
+        else:
+            raise ValueError(f'Άγνωστη πηγή μοντέλου: {source}!')
         self.model.conf = conf
 
         # Φιλτράρισμα για τα classes που μας ενδιαφέρουν!
@@ -374,11 +389,10 @@ def main():
     use_yolo = False
     use_yolo = True
     if use_yolo:
-        yolo_detector = YOLODetector(
-            model_name = 'yolov5s', conf = 0.25
-        )
+        yolo_detector = YOLODetector(model_name = 'yolov5s', conf = 0.25)
+        print() # Για καλύτερη εμφάνιση!
 
-    image_type = 'um'
+    image_type   = 'um'
     dataset_type = 'testing'
     dataset_type = 'training'
 

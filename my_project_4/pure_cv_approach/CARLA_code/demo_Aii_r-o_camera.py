@@ -99,7 +99,9 @@ def main():
         'Tx': -(P3[0, 3] - P2[0, 3]) / f
     }
 
-    yolo_detector = YOLODetector(model_name = 'yolov5s', conf = 0.25)
+    yolo_detector = YOLODetector(
+        model_name = 'yolov5s', conf = 0.25, source = 'pip'
+    )
 
     dt0 = datetime.now()
     try:

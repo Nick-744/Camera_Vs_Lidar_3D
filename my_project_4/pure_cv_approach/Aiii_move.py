@@ -35,7 +35,7 @@ def draw_arrow_right_half(
 
     h, _ = road_mask.shape[:2]
 
-    centres: list[tuple[int, int]]   = []  # (x, y)
+    centres: list[tuple[int, int]]      = []  # (x, y)
     slices:  list[tuple[int, int, int]] = []  # (x0, x1, y) for the thin line
 
     # 1) walk bottom-up collecting candidate x-centres
