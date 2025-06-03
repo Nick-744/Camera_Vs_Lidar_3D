@@ -122,40 +122,73 @@ def get_transform_matrix(transform: carla.Transform) -> np.ndarray:
 
     return matrix;
 
-def get_kitti_calibration(WIDTH, HEIGHT, FOV, baseline, camera, lidar):
+def get_kitti_calibration(WIDTH:    int,
+                          HEIGHT:   int,
+                          FOV:      float,
+                          baseline: float = -1., # Δεν έχει σημασία για τα LiDAR!
+                          camera:   carla.Sensor = None,
+                          lidar:    carla.Sensor = None) -> tuple:
+    '''
+    Υπολογίζει τις παραμέτρους εσωτερικού και εξωτερικού calibration
+    για προσομοίωση συμβατή με τη μορφή του KITTI dataset!
+
+    Params:
+     - baseline_: Η απόσταση μεταξύ των καμερών (-1 για LiDAR ερωτήματα)!
+     - camera_:   None για τα stereo/camera ερωτήματα!
+     - lidar_:    None για τα stereo/camera ερωτήματα!
+
+    Returns:
+    - calib:          Λεξικό με βασικές παραμέτρους βαθμονόμησης.
+    - P2:             Τη μήτρα προβολής της αριστερής κάμερας.
+    - Tr_velo_to_cam: Τη μετατροπή από το σύστημα συντεταγμένων του
+      LiDAR στο σύστημα της κάμερας.
+
+    Σημειώσεις:
+    -----------
+    - Η εσωτερική βαθμονόμηση (K) υπολογίζεται από τις διαστάσεις της
+      εικόνας και το FOV.
+    - Το σύστημα συντεταγμένων του KITTI έχει διαφορετικό προσανατολισμό
+      από του CARLA, οπότε εφαρμόζεται axis conversion! ***
+    - Η μήτρα P3 χρησιμοποιείται εσωτερικά για τον υπολογισμό του Tx.
+    '''
     K  = get_camera_intrinsic_matrix(WIDTH, HEIGHT, FOV)
     P2 = np.hstack([K, np.zeros((3, 1))]) # P2 = [K | 0]
     f  = P2[0, 0]
 
     # Compute KITTI-style right camera projection matrix
     # Μετατροπή από το αριστερό στο δεξί σύστημα αναφοράς {camera space}
-    T  = np.array([[-baseline], [0], [0]])
-    P3 = np.hstack([K, K @ T]) # P3 = K · [I | t]
+    if baseline == -1:
+        # Tr_velo_to_cam : LiDAR → Camera (4×4) [με KITTI axes]
+        lidar_to_camera = np.linalg.inv(
+            get_transform_matrix(camera.get_transform())
+        ) @ get_transform_matrix(lidar.get_transform())
 
-    calib = {
-        'f':  f,
-        'cx': P2[0, 2],
-        'cy': P2[1, 2],
-        'Tx': -(P3[0, 3] - P2[0, 3]) / f
-    }
+        # KITTI έχει: +Z forward, +X right, +Y down (OpenCV).  
+        # CARLA/LiDAR frame είναι +X forward, +Y right, +Z up!
+        axis_conv = np.array(
+            [[0, 1, 0, 0], # X_cam =  Y_lidar
+             [0, 0,-1, 0], # Y_cam = -Z_lidar
+             [1, 0, 0, 0], # Z_cam =  X_lidar
+             [0, 0, 0, 1]]
+        )
 
-    # Tr_velo_to_cam : LiDAR → Camera (4×4) [με KITTI axes]
-    lidar_to_camera = np.linalg.inv(
-        get_transform_matrix(camera.get_transform())
-    ) @ get_transform_matrix(lidar.get_transform())
+        Tr_velo_to_cam = axis_conv @ lidar_to_camera
 
-    # KITTI έχει: +Z forward, +X right, +Y down (OpenCV).  
-    # CARLA/LiDAR frame είναι +X forward, +Y right, +Z up!
-    axis_conv = np.array(
-        [[0, 1, 0, 0], # X_cam =  Y_lidar
-         [0, 0,-1, 0], # Y_cam = -Z_lidar
-         [1, 0, 0, 0], # Z_cam =  X_lidar
-         [0, 0, 0, 1]]
-    )
+        calib = None;
+    else:
+        T  = np.array([[-baseline], [0], [0]])
+        P3 = np.hstack([K, K @ T]) # P3 = K · [I | t]
 
-    Tr_velo_to_cam = axis_conv @ lidar_to_camera
+        calib = {
+            'f':  f,
+            'cx': P2[0, 2],
+            'cy': P2[1, 2],
+            'Tx': -(P3[0, 3] - P2[0, 3]) / f
+        }
 
-    
+        Tr_velo_to_cam = None;
+
+    return (calib, P2, Tr_velo_to_cam);
 
 def overlay_mask(image: np.ndarray,
                  mask:  np.ndarray,

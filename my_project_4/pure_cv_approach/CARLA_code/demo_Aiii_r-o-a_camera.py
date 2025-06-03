@@ -10,7 +10,7 @@ from datetime import datetime
 
 # --- Imports ---
 from carla_helpers import (
-    get_camera_intrinsic_matrix,
+    get_kitti_calibration,
     setup_camera,
     overlay_mask,
     setup_CARLA
@@ -117,12 +117,17 @@ def main():
     camera_3.listen(_cam_callback('right'))
     
     world.tick() # Για να έχουνε 'υπάρξει' στον κόσμο!
-    get_kitti_calibration()
+    (calib, _, _) = get_kitti_calibration(
+        WIDTH = WIDTH, HEIGHT = HEIGHT, FOV = FOV,
+        baseline = baseline,
+    )
 
     yolo_detector = YOLODetector(source = 'pip')
     show_road  = True
     show_boxes = True
     show_arrow = True
+
+    print('Το setup ολοκληρώθηκε!')
 
     dt0 = datetime.now()
     try:
@@ -133,7 +138,7 @@ def main():
                 latest_images['right'] is None:
                 continue;
 
-            left_color = latest_images['left'].copy()
+            left_color = latest_images['left']
             left_gray  = cv2.cvtColor(left_color, cv2.COLOR_BGR2GRAY)
             right_gray = cv2.cvtColor(
                 latest_images['right'].copy(), cv2.COLOR_BGR2GRAY
@@ -152,18 +157,17 @@ def main():
 
             # --- Ζωγραφικηηηή ---
             if show_road:
-                if np.sum(road_mask_cleaned) == 0:
-                    continue;
-                vis = overlay_mask( # Μπλε χρώμα δρόμος!
-                    left_color, road_mask_cleaned, (255, 0, 0)
-                )
+                if np.sum(road_mask_cleaned) != 0:
+                    vis = overlay_mask( # Μπλε χρώμα δρόμος!
+                        left_color, road_mask_cleaned, (255, 0, 0)
+                    )
             else:
-                vis = left_color.copy()
+                vis = left_color
 
             if show_boxes:
                 draw_bboxes(vis, boxes)
             
-            if show_arrow and show_road:
+            if show_arrow:
                 vis = draw_arrow_right_half(
                     vis,
                     road_mask_cleaned,

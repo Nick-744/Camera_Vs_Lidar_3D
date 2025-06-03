@@ -9,8 +9,7 @@ from datetime import datetime
 
 # --- Imports ---
 from carla_helpers import (
-    get_camera_intrinsic_matrix,
-    get_transform_matrix,
+    get_kitti_calibration,
     setup_camera,
     overlay_mask,
     setup_CARLA
@@ -100,14 +99,14 @@ def main():
     lidar.listen(lidar_callback)
 
     world.tick() # Για να φορτώσουν σωστά οι τιμές:
-    
-
-    
+    (_, P2, Tr_velo_to_cam) = get_kitti_calibration(
+        WIDTH = WIDTH, HEIGHT = HEIGHT, FOV = FOV,
+        camera = camera, vehicle = vehicle
+    )
 
     print('Το setup ολοκληρώθηκε!')
 
     # --- Main loop
-    frame = 0
     dt0 = datetime.now()
     try:
         while True:
@@ -117,7 +116,7 @@ def main():
                 (raw_lidar_points is None):
                 continue;
 
-            display = latest_rgb['frame'].copy()
+            display = latest_rgb['frame']
             (mask, _, _) = my_road_from_pcd_is(
                 raw_lidar_points,
                 Tr_velo_to_cam,
@@ -138,8 +137,6 @@ def main():
             fps = 1. / (dt1 - dt0).total_seconds()
             print(f'\rFPS: {fps:.2f}', end = '')
             dt0 = dt1
-            
-            frame += 1
 
     except KeyboardInterrupt:
         print('\nΔιακοπή')
