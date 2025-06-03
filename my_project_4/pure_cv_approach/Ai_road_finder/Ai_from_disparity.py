@@ -278,7 +278,8 @@ def main():
 
         cv2.imshow('Overlay', result)
         cv2.waitKey(0)
-        cv2.destroyAllWindows()
+
+    cv2.destroyAllWindows()
 
     return;
 

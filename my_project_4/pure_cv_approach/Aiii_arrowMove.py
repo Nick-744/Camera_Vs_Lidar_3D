@@ -13,17 +13,18 @@ def draw_arrow_right_half(
     img:       np.ndarray,
     road_mask: np.ndarray,
     boxes:     List[Tuple[int, int, int, int]],
+    full_road: bool = False,
     step_px:   int = 8,
     min_pts:   int = 8,
     rj_filter: bool = True
 ) -> np.ndarray:
     '''
     Επιστρέφει το διάνυσμα κίνησης (κατεύθυνση), χρωματισμένο βάση
-    την σύγκρουση/επαφή με εμπόδιο!
+    την σύγκρουση/επαφή με εμπόδιο! Επίλεξε αν θέλεις ολόκληρο τον δρόμο.
         
     Args:
-     - rj_filter_: Remove Jumps filter, ώστε να μην επηρεάζεται η κατεύθυνση από
-       μεμονωμένες κουκκίδες λόω θορύβου της μάσκας!
+     - rj_filter_: Remove Jumps filter, ώστε να μην επηρεάζεται η
+       κατεύθυνση από μεμονωμένες κουκκίδες λόγω θορύβου της μάσκας!
     '''
     # Το % των κουκκίδων που θα γίνουν κόκκινες όταν συναντήσει εμπόδιο!
     RED_FRAC = 0.3
@@ -34,25 +35,29 @@ def draw_arrow_right_half(
 
     (h, _) = road_mask.shape[:2]
 
-    centres: list[tuple[int, int]]      = [] # (x, y)
-    slices:  list[tuple[int, int, int]] = [] # (x0, x1, y) για την λεπτή γραμμή
+    centres = [] # (x, y)
+    slices  = [] # (x0, x1, y) για την λεπτή γραμμή
 
     # Εύρεση των υποψήφων για το κέντρο του δρόμου
     # ξεκινώντας από το κάτω μέρος της εικόνας!!!
     for y in range(h - 1, -1, -step_px):
         row_idx = np.flatnonzero(road_mask[y]) # x θέσεις όπου υπάρχει mask!
-        if row_idx.size < 3:
+        if row_idx.size < min_pts:
             if centres: # Είχαμε ήδη κέντρο δρόμου!
                 break;
             continue;
 
         (x_left, x_right) = (int(row_idx[0]), int(row_idx[-1]))
-        x_mid = (x_left + x_right) // 2
-        right_idx = row_idx[row_idx >= x_mid]
-        if right_idx.size < 3:
-            continue;
+        if not full_road:
+            x_mid     = (x_left + x_right) // 2
+            right_idx = row_idx[row_idx >= x_mid]
+            if right_idx.size < min_pts:
+                continue;
 
-        x_c = int((right_idx[0] + right_idx[-1]) // 2)
+            x_c = int((right_idx[0] + right_idx[-1]) // 2)
+        else:
+            right_idx = row_idx
+            x_c = int((x_left + x_right) // 2)
         centres.append((x_c, y))
         slices.append((int(right_idx[0]), int(right_idx[-1]), y))
 
@@ -62,9 +67,9 @@ def draw_arrow_right_half(
 
     # Φιλτράρισμα για να αποφύγουμε το λάθος των λίγων [jumps]!
     if rj_filter:
-        xs = np.array([x for x, _ in centres])
+        xs         = np.array([x for x, _ in centres])
         dominant_x = int(np.bincount(xs).argmax())
-        centres = [
+        centres    = [
             (dominant_x, y) if abs(x - dominant_x) > 6 else (x, y) \
                 for (x, y) in centres
         ]
@@ -143,7 +148,8 @@ def main():
 
         cv2.imshow('Arrow Visualization', vis)
         cv2.waitKey(0)
-        cv2.destroyAllWindows()
+
+    cv2.destroyAllWindows()
 
     return;
 

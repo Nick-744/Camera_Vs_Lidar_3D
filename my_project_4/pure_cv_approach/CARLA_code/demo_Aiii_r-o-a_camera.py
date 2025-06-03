@@ -136,12 +136,15 @@ def main():
 
             # --- Ζωγραφικηηηή ---
             draw_bboxes(left_color, boxes)
-            temp = overlay_mask(left_color, road_mask_cleaned)
+            temp = overlay_mask( # Μπλε χρώμα δρόμος!
+                left_color, road_mask_cleaned, (255, 0, 0)
+            )
             vis = draw_arrow_right_half(
                 temp,
                 road_mask_cleaned,
                 boxes,
-                rj_filter = False
+                full_road = True,
+                rj_filter = True
             )
 
             cv2.imshow('Stereo Aii – Road detection', vis)
