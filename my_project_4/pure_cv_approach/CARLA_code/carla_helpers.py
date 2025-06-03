@@ -22,7 +22,7 @@ except:
 import carla
 
 # --- Setups
-def setup_CARLA() -> tuple:
+def setup_CARLA(render: bool = False) -> tuple:
     ''' Ρυμίζει το CARLA world κατάλληλα και τον
         επιστρέφει, μαζί με τις default ρυθμίσεις του. '''
     client = carla.Client('localhost', 2000)
@@ -46,7 +46,8 @@ def setup_CARLA() -> tuple:
     settings = world.get_settings()
     settings.synchronous_mode    = True
     settings.fixed_delta_seconds = 0.05
-    settings.no_rendering_mode   = True
+    if not render:
+        settings.no_rendering_mode = True
     
     world.apply_settings(settings)
 
