@@ -6,23 +6,7 @@ from time import time
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 
-def parse_kitti_calib(file_path: str) -> dict:
-    calib = {}
-    with open(file_path, 'r') as f:
-        for line in f:
-            if ':' not in line:
-                continue;
-            key, value = line.strip().split(':', 1)
-            calib[key.strip()] = float(value.strip())
-
-    required_keys = ['f', 'cx', 'cy', 'cx_prime', 'Tx']
-    for key in required_keys:
-        if key not in calib:
-            raise ValueError(
-                f"Λείπει η τιμή του {key} από το αρχείο {file_path}!"
-            );
-
-    return calib;
+from Aii_obj_detection_current import parse_kitti_calib
 
 def ransac_ground_removal(points:             np.ndarray,
                           distance_threshold: float = 0.01,
@@ -424,7 +408,7 @@ def main():
             'image_3',
             image_name
         )
-        calib_path = os.path.join(base_dir, 'calibration_KITTI.txt')
+        calib_path = os.path.join(base_dir, '..', 'calibration_KITTI.txt')
         calib = parse_kitti_calib(calib_path)
 
         left_color = cv2.imread(left_path)
