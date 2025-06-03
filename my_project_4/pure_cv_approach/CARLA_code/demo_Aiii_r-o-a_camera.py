@@ -116,7 +116,6 @@ def main():
     camera_2.listen(_cam_callback('left'))
     camera_3.listen(_cam_callback('right'))
     
-    world.tick() # Για να έχουνε 'υπάρξει' στον κόσμο!
     (calib, _, _) = get_kitti_calibration(
         WIDTH = WIDTH, HEIGHT = HEIGHT, FOV = FOV,
         baseline = baseline,
@@ -138,10 +137,11 @@ def main():
                 latest_images['right'] is None:
                 continue;
 
-            left_color = latest_images['left']
+            # .copy() -> Assignment destination is read-only
+            left_color = latest_images['left'].copy()
             left_gray  = cv2.cvtColor(left_color, cv2.COLOR_BGR2GRAY)
             right_gray = cv2.cvtColor(
-                latest_images['right'].copy(), cv2.COLOR_BGR2GRAY
+                latest_images['right'], cv2.COLOR_BGR2GRAY
             )
 
             left_gray_cropped  = crop_bottom_half(left_gray)

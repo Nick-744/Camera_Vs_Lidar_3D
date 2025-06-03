@@ -98,10 +98,9 @@ def main():
     camera.listen(camera_callback)
     lidar.listen(lidar_callback)
 
-    world.tick() # Για να φορτώσουν σωστά οι τιμές:
     (_, P2, Tr_velo_to_cam) = get_kitti_calibration(
         WIDTH = WIDTH, HEIGHT = HEIGHT, FOV = FOV,
-        camera = camera, vehicle = vehicle
+        camera = camera, lidar = vehicle
     )
 
     print('Το setup ολοκληρώθηκε!')
@@ -116,7 +115,8 @@ def main():
                 (raw_lidar_points is None):
                 continue;
 
-            display = latest_rgb['frame']
+            # .copy() -> Assignment destination is read-only
+            display = latest_rgb['frame'].copy()
             (mask, _, _) = my_road_from_pcd_is(
                 raw_lidar_points,
                 Tr_velo_to_cam,
