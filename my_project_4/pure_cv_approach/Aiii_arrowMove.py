@@ -13,6 +13,7 @@ def draw_arrow_right_half(
     img:       np.ndarray,
     road_mask: np.ndarray,
     boxes:     List[Tuple[int, int, int, int]],
+    line_len:  int = -1,
     full_road: bool = False,
     step_px:   int = 8,
     min_pts:   int = 8,
@@ -21,8 +22,10 @@ def draw_arrow_right_half(
     '''
     Επιστρέφει το διάνυσμα κίνησης (κατεύθυνση), χρωματισμένο βάση
     την σύγκρουση/επαφή με εμπόδιο! Επίλεξε αν θέλεις ολόκληρο τον δρόμο.
-        
+    
     Args:
+     - line_len_: Το μήκος στο οποίο θα εκτείνεται η γραμμή των dots.
+     - full_road_: Σχεδιασμός ολόκληρου του δρόμου ή μόνο της δεξιάς πλευράς.
      - rj_filter_: Remove Jumps filter, ώστε να μην επηρεάζεται η
        κατεύθυνση από μεμονωμένες κουκκίδες λόγω θορύβου της μάσκας!
     '''
@@ -40,7 +43,7 @@ def draw_arrow_right_half(
 
     # Εύρεση των υποψήφων για το κέντρο του δρόμου
     # ξεκινώντας από το κάτω μέρος της εικόνας!!!
-    for y in range(h - 1, -1, -step_px):
+    for y in range(h - 1, line_len, -step_px):
         row_idx = np.flatnonzero(road_mask[y]) # x θέσεις όπου υπάρχει mask!
         if row_idx.size < min_pts:
             if centres: # Είχαμε ήδη κέντρο δρόμου!

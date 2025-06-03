@@ -50,7 +50,7 @@ import carla
 latest_images = {'left': None, 'right': None}
 
 # --- Callbacks ---
-def _cam_callback(buffer_name):
+def _cam_callback(buffer_name: str) -> callable:
     ''' Constructor wrapper για δημιουργία image callback '''
     def _cb(image):
         array = np.frombuffer(image.raw_data, dtype = np.uint8)
@@ -59,13 +59,42 @@ def _cam_callback(buffer_name):
     
     return _cb;
 
+def control_what_to_show(key:       int,
+                        show_road:  bool,
+                        show_boxes: bool,
+                        show_arrow: bool) -> tuple:
+    ''' Ελέγχει τι θα εμφανιστεί στην οθόνη '''
+    if key == ord('1'):
+        print() # Καλύτερη εμφάνιση!
+        if show_road:
+            print("Απενεργοποίηση: Road Mask")
+        else:
+            print("Ενεργοποίηση: Road Mask")
+        show_road = not show_road
+    elif key == ord('2'):
+        print() # Καλύτερη εμφάνιση!
+        if show_boxes:
+            print("Απενεργοποίηση: Bounding Boxes")
+        else:
+            print("Ενεργοποίηση: Bounding Boxes")
+        show_boxes = not show_boxes
+    elif key == ord('3'):
+        print() # Καλύτερη εμφάνιση!
+        if show_arrow:
+            print("Απενεργοποίηση: Arrow")
+        else:
+            print("Ενεργοποίηση: Arrow")
+        show_arrow = not show_arrow
+
+    return (show_road, show_boxes, show_arrow);
+
 def main():
     (world, original_settings) = setup_CARLA()
 
     blueprint_library = world.get_blueprint_library()
-    vehicle_bp = blueprint_library.filter('model3')[0]
+    vehicle_bp  = blueprint_library.filter('model3')[0]
     spawn_point = world.get_map().get_spawn_points()[0]
-    vehicle = world.spawn_actor(vehicle_bp, spawn_point)
+    vehicle     = world.spawn_actor(vehicle_bp, spawn_point)
     vehicle.set_autopilot(True)
 
     # --- Stereo cameras
@@ -88,23 +117,12 @@ def main():
     camera_3.listen(_cam_callback('right'))
     
     world.tick() # Για να έχουνε 'υπάρξει' στον κόσμο!
-    K  = get_camera_intrinsic_matrix(WIDTH, HEIGHT, FOV)
-    P2 = np.hstack([K, np.zeros((3, 1))]) # P2 = [K | 0]
-    f  = P2[0, 0]
-
-    # Compute KITTI-style right camera projection matrix
-    # Μετατροπή από το αριστερό στο δεξί σύστημα αναφοράς {camera space}
-    T  = np.array([[-baseline], [0], [0]])
-    P3 = np.hstack([K, K @ T]) # P3 = K · [I | t]
-    
-    calib = {
-        'f':  f,
-        'cx': P2[0, 2],
-        'cy': P2[1, 2],
-        'Tx': -(P3[0, 3] - P2[0, 3]) / f
-    }
+    get_kitti_calibration()
 
     yolo_detector = YOLODetector(source = 'pip')
+    show_road  = True
+    show_boxes = True
+    show_arrow = True
 
     dt0 = datetime.now()
     try:
@@ -131,25 +149,44 @@ def main():
                 calib,
                 numDisparities = 80
             )
-            if np.sum(road_mask_cleaned) == 0:
-                continue;
 
             # --- Ζωγραφικηηηή ---
-            draw_bboxes(left_color, boxes)
-            temp = overlay_mask( # Μπλε χρώμα δρόμος!
-                left_color, road_mask_cleaned, (255, 0, 0)
-            )
-            vis = draw_arrow_right_half(
-                temp,
-                road_mask_cleaned,
-                boxes,
-                full_road = True,
-                rj_filter = True
-            )
+            if show_road:
+                if np.sum(road_mask_cleaned) == 0:
+                    continue;
+                vis = overlay_mask( # Μπλε χρώμα δρόμος!
+                    left_color, road_mask_cleaned, (255, 0, 0)
+                )
+            else:
+                vis = left_color.copy()
 
-            cv2.imshow('Stereo Aii – Road detection', vis)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if show_boxes:
+                draw_bboxes(vis, boxes)
+            
+            if show_arrow and show_road:
+                vis = draw_arrow_right_half(
+                    vis,
+                    road_mask_cleaned,
+                    boxes,
+                    line_len  = 400,
+                    full_road = True,
+                    rj_filter = True
+                )
+
+            cv2.imshow('Dash Camera', vis)
+
+            # --- Έλεγχος της επεξεργασίας/εμφάνισης ---
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
                 break;
+            (
+                show_road,
+                show_boxes,
+                show_arrow
+            ) = control_what_to_show(
+                key,
+                show_road, show_boxes, show_arrow
+            )
 
             # FPS
             dt1 = datetime.now()

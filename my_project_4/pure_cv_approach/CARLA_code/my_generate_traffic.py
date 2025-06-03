@@ -78,24 +78,24 @@ def get_actor_blueprints(world, filter, generation):
 
 def main():
     # --- Hardcoded configuration -----------------------------------------------
-    HOST              = '127.0.0.1'
-    PORT              = 2000
+    HOST               = '127.0.0.1'
+    PORT               = 2000
     NUMBER_OF_VEHICLES = 45
     NUMBER_OF_WALKERS  = 15
-    SAFE_MODE         = False   # If True, only spawn 'car' base_type vehicles
-    FILTER_VEHICLES   = 'vehicle.*'
+    SAFE_MODE          = False   # If True, only spawn 'car' base_type vehicles
+    FILTER_VEHICLES    = 'vehicle.*'
     GENERATION_VEH     = 'All'
-    FILTER_WALKERS    = 'walker.pedestrian.*'
-    GENERATION_WALK   = 'All'
-    TM_PORT           = 8000
-    ASYNCHRONOUS      = False
-    HYBRID_MODE       = False
-    RANDOM_SEED       = None    # e.g. 42 for deterministic Traffic Manager
-    PEDESTRIAN_SEED   = None    # e.g. 17 for deterministic walker spawning
-    CAR_LIGHTS_ON     = False
-    HERO_MODE         = False   # If True, the very first spawned vehicle is 'hero'
-    RESPAWN_DORMANT   = False
-    NO_RENDERING      = False
+    FILTER_WALKERS     = 'walker.pedestrian.*'
+    GENERATION_WALK    = 'All'
+    TM_PORT            = 8000
+    ASYNCHRONOUS       = False
+    HYBRID_MODE        = False
+    RANDOM_SEED        = None    # e.g. 42 for deterministic Traffic Manager
+    PEDESTRIAN_SEED    = None    # e.g. 17 for deterministic walker spawning
+    CAR_LIGHTS_ON      = False
+    HERO_MODE          = False   # If True, the very first spawned vehicle is 'hero'
+    RESPAWN_DORMANT    = False
+    NO_RENDERING       = False
 
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 
@@ -118,9 +118,9 @@ def main():
         # Grab every traffic light in the map and override its cycle times:
         for tl in world.get_actors().filter('traffic.traffic_light*'):
             try:
-                tl.set_green_time(5.)   # 5 seconds green
-                tl.set_yellow_time(2.)  # 2 seconds yellow
-                tl.set_red_time(5.)     # 5 seconds red
+                tl.set_green_time(2.5)
+                tl.set_yellow_time(1.)
+                tl.set_red_time(2.5)
             except Exception as e:
                 # Some maps/versions may not support all setters; ignore if it fails:
                 logging.debug(f"Could not set times on TL {tl.id}: {e}")

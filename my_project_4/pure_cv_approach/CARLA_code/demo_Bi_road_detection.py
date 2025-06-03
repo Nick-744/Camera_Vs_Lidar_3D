@@ -82,9 +82,9 @@ def main():
     (world, original_settings) = setup_CARLA()
 
     blueprint_library = world.get_blueprint_library()
-    vehicle_bp = blueprint_library.filter('model3')[0]
+    vehicle_bp  = blueprint_library.filter('model3')[0]
     spawn_point = world.get_map().get_spawn_points()[0]
-    vehicle = world.spawn_actor(vehicle_bp, spawn_point)
+    vehicle     = world.spawn_actor(vehicle_bp, spawn_point)
     vehicle.set_autopilot(True)
 
     (WIDTH, HEIGHT, FOV) = (600, 600, 90)
@@ -100,24 +100,9 @@ def main():
     lidar.listen(lidar_callback)
 
     world.tick() # Για να φορτώσουν σωστά οι τιμές:
-    K  = get_camera_intrinsic_matrix(WIDTH, HEIGHT, FOV)
-    P2 = np.hstack([K, np.zeros((3, 1))]) # P2 = [K | 0]
+    
 
-    # Tr_velo_to_cam : LiDAR → Camera (4×4) [με KITTI axes]
-    lidar_to_camera = np.linalg.inv(
-        get_transform_matrix(camera.get_transform())
-    ) @ get_transform_matrix(lidar.get_transform())
-
-    # KITTI έχει: +Z forward, +X right, +Y down (OpenCV).  
-    # CARLA/LiDAR frame είναι +X forward, +Y right, +Z up!
-    axis_conv = np.array(
-        [[0, 1, 0, 0], # X_cam =  Y_lidar
-         [0, 0,-1, 0], # Y_cam = -Z_lidar
-         [1, 0, 0, 0], # Z_cam =  X_lidar
-         [0, 0, 0, 1]]
-    )
-
-    Tr_velo_to_cam = axis_conv @ lidar_to_camera
+    
 
     print('Το setup ολοκληρώθηκε!')
 
@@ -144,7 +129,7 @@ def main():
             display = overlay_mask(
                 display, mask, color = (255, 0, 0)
             )
-            cv2.imshow('', display)
+            cv2.imshow('Dash Camera', display)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break;
 
