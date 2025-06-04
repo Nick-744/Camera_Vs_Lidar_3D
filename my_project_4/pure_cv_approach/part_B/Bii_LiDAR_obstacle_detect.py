@@ -5,12 +5,13 @@ from time import time
 from sklearn.cluster import DBSCAN
 
 from Bi_road_detection_pcd import (
-    detect_ground_plane,
+    my_road_from_pcd_is,
+    filter_visible_points,
     project_lidar_to_image,
     load_velodyne_bin,
     load_calibration,
-    filter_visible_points,
-    filter_by_height
+    filter_by_height,
+    overlay_mask
 )
 
 # --- Ρύθμιση παραμέτρων για ευκολία...
@@ -34,7 +35,7 @@ CONFIG = {
         'min_box_area': 30
     },
     'visualization': {
-        'dot_radius':            4,
+        'dot_radius':            2,
         'dot_thickness':        -1, # filled κύκλοι
         'max_lidar_distance':  50.,
         'small_size_threshold': 20
@@ -48,34 +49,6 @@ PROXIMITY_COLORS = [
     (0, 255, 255), # Κίτρινο  / μέτρια απόσταση
     (0, 255, 0  ), # Πράσινο  / μακριά...
 ]
-
-# --- Συναρτήσεις για επίπεδο/RANSAC & cluster/DBSCAN ---
-def ransac_ground_removal(points: np.ndarray) -> tuple:
-    '''
-    Χρησιμοποιώντας RANSAC, τα σημεία
-    χωρίζονται σε έδαφος/δρόμος και μη!
-    '''
-    temp = CONFIG['ground_removal']
-    
-    (_, ground_plane) = detect_ground_plane(
-        points,
-        distance_threshold = temp['distance_threshold'],
-        num_iterations     = temp['num_iterations']
-    )
-    
-    non_ground = filter_points_near_plane(
-        points,
-        ground_plane, 
-        max_dist = temp['non_ground_max_dist'], 
-        invert   = True
-    )
-    ground = filter_points_near_plane(
-        points,
-        ground_plane, 
-        max_dist = temp['ground_max_dist']
-    )
-    
-    return (non_ground, ground, ground_plane);
 
 def cluster_obstacles_dbscan(points: np.ndarray) -> np.ndarray:
     ''' DBSCAN για ομαδοποίηση σημείων. '''
@@ -254,12 +227,25 @@ def detect_obstacles_withLiDAR(image:          np.ndarray,
                                points:         np.ndarray,
                                P2:             np.ndarray,
                                Tr_velo_to_cam: np.ndarray) -> tuple:
-    visible_points = filter_visible_points(
+    '''
+    Συνδιασμός Βi και ανίχνευσης εμποδίων [Bii] με LiDAR.
+    
+    Returns:
+    - final_image:   Εικόνα που περιέχει τον δρόμο και τα εμπόδια!
+    - clusters:      Dict με τα clusters των εμποδίων.
+    - ground_points: Το pcd του δρόμου που βρέθηκε βάση της Bi ανίχνευσης.
+    '''
+    (road_mask, ground_points, ground_plane) = my_road_from_pcd_is(
         points, Tr_velo_to_cam, P2, image.shape
-    )
+    ) # Δεν γυρνά τα συνολικά σημεία που είναι ορατά από την κάμερα...
 
-    (obstacles_raw, _, ground_plane) = ransac_ground_removal(
-        visible_points
+    obstacles_raw = filter_points_near_plane(
+        filter_visible_points(
+            points, Tr_velo_to_cam, P2, image.shape
+        ), # ... οπότε, under the hood, εκτελείται 2 φορές...
+        ground_plane, 
+        max_dist = CONFIG['ground_removal']['non_ground_max_dist'], 
+        invert   = True
     )
 
     obstacles_filtered = filter_by_height(
@@ -272,14 +258,20 @@ def detect_obstacles_withLiDAR(image:          np.ndarray,
     labels   = cluster_obstacles_dbscan(obstacles_filtered)
     clusters = group_clusters(obstacles_filtered, labels)
 
+    # --- Ζωγραφικηηή! ---
+
+    # Εμφάνιση του δρόμου στην εικόνα
+    overlay = overlay_mask(
+        image, road_mask, color = (255, 0, 0), alpha = 0.5
+    )
+
+    # Προβολή των clusters στην εικόνα με dots
     colored_dots = project_clusters_with_dots(
         clusters, Tr_velo_to_cam, P2, image.shape
     )
+    final_image = visualize_results(overlay, colored_dots)
 
-    # Ζωγραφικηηή!
-    result_image = visualize_results(image, colored_dots)
-
-    return (result_image, colored_dots);
+    return (final_image, clusters, ground_points);
 
 def main():
     base_dir = os.path.dirname(__file__)
@@ -290,7 +282,6 @@ def main():
 
     calib_path = os.path.join(base_dir, '..', 'calibration_KITTI.txt')
     (Tr_velo_to_cam, P2) = load_calibration(calib_path)
-    print(type(Tr_velo_to_cam), type(P2))
     
     for i in range(94):
         general_name_file = (f'{image_type}_0000{i}' if i > 9 \
@@ -315,12 +306,12 @@ def main():
         points = load_velodyne_bin(bin_path)
 
         start = time()
-        (result_image, _) = detect_obstacles_withLiDAR(
+        (result_image, _, _) = detect_obstacles_withLiDAR(
             image, points, P2, Tr_velo_to_cam
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec / {general_name_file}')
 
-        cv2.imshow('LiDAR - ObstDet', result_image)
+        cv2.imshow('DashCam', result_image)
         cv2.waitKey(0)
     
     cv2.destroyAllWindows()
