@@ -89,8 +89,17 @@ def visualize_toggle(image:          np.ndarray,
     print(f'Χρόνος εκτέλεσης: {time() - start:.2f} sec')
 
     vis = o3d.visualization.VisualizerWithKeyCallback()
-    vis.create_window(width = 960, height = 720)
+    vis.create_window(width = 1000, height = 600)
     vis.add_geometry(processed_pcd)
+
+    # --- Camera Car Viewpoint Setup ---
+    # Θέτουμε την κάμερα Open3D να ταιριάζει με την κάμερα KITTI!
+    view_control = vis.get_view_control()
+    params = view_control.convert_to_pinhole_camera_parameters()
+
+    # Εφαρμογή του μετασχηματισμού LiDAR -> Camera!
+    params.extrinsic = Tr_velo_to_cam # 4x4 matrix: LiDAR -> Camera
+    view_control.convert_from_pinhole_camera_parameters(params)
 
     def _toggle_callback(vis_obj):
         TOGGLE_STATE['show_raw'] = not TOGGLE_STATE['show_raw']
