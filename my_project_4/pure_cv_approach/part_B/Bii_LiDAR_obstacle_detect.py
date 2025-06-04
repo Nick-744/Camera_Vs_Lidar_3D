@@ -4,6 +4,10 @@ import numpy as np
 from time import time
 from sklearn.cluster import DBSCAN
 
+import sys
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+# Αλλιώς, ModuleNotFoundError: No module named
+# 'Bi_road_detection_pcd' όταν το Bii γίνεται import...
 from Bi_road_detection_pcd import (
     my_road_from_pcd_is,
     filter_visible_points,
@@ -276,7 +280,7 @@ def detect_obstacles_withLiDAR(image:          np.ndarray,
 def main():
     base_dir = os.path.dirname(__file__)
 
-    image_type = 'um'
+    image_type   = 'um'
     dataset_type = 'testing'
     dataset_type = 'training'
 
