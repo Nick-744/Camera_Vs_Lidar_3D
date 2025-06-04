@@ -1,7 +1,6 @@
 import numpy as np
 import open3d as o3d
 from sklearn.neighbors import KDTree
-from scipy.spatial.distance import cdist
 
 def region_growing_on_height_band(points, plane, min_h, max_h, 
                                  depth_radius=1.2, width_radius=0.6, 
@@ -236,9 +235,25 @@ def _remove_outliers(points, plane, std_threshold=2.0):
     
     return points[inlier_mask]
 
+def analyze_height_distribution(points: np.ndarray,
+                                plane:  np.ndarray) -> None:
+    '''
+    Υπολογίζει histogram των αποστάσεων σημείων
+    από το επίπεδο. Επιστρέφει τα ύψη ταξινομημένα.
+    '''
+    (a, b, c, d) = plane
+    normal = np.array([a, b, c])
+    height = (points @ normal + d) / np.linalg.norm(normal)
+
+    # Ιστογράφημα
+    (counts, bins) = np.histogram(height, bins = 200)
+    max_bin_index = np.argmax(counts)
+    mode_center = 0.5 * (bins[max_bin_index] + bins[max_bin_index + 1])
+
+    return (np.sort(height), mode_center);
 
 # Updated function call in your main code:
-def enhanced_region_growing_road_detection(points, plane, mode_h, 
+def enhanced_region_growing_road_detection(points, plane,
                                          vehicle_position=None):
     """
     Main function to call the enhanced region growing with optimized parameters.
@@ -248,14 +263,15 @@ def enhanced_region_growing_road_detection(points, plane, mode_h,
     """
     # Slightly expand the height band around the mode
     height_tolerance = 0.06  # Increased from 0.04 for better coverage
+    (_, mode_h) = analyze_height_distribution(points, plane)
     
     result = region_growing_on_height_band(
         points, plane,
         min_h=mode_h - height_tolerance,
         max_h=mode_h + height_tolerance,
-        depth_radius=1.5,      # More permissive in depth direction
-        width_radius=0.5,      # More permissive in width direction  
-        angle_thresh_deg=25.0, # More permissive normal similarity
+        depth_radius=2.,       # More permissive in depth direction
+        width_radius=0.4,      # More permissive in width direction  
+        angle_thresh_deg=20.0, # More permissive normal similarity
         height_thresh=0.08,    # More permissive height difference
         min_cluster_size=50,   # Smaller minimum cluster size
         max_slope_deg=20.0     # More permissive slope constraint

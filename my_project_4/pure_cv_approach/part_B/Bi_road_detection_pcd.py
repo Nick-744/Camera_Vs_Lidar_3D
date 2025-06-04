@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import open3d as o3d
 from time import time
-import matplotlib.pyplot as plt
 
 from region_growing_helper import enhanced_region_growing_road_detection
 
@@ -28,7 +27,10 @@ def filter_visible_points(pcd:            np.ndarray,
 
     return pts_kept[fov_mask];
 
-def filter_by_height(points, plane, min_h=-0.2, max_h=0.2):
+def filter_by_height(points: np.ndarray,
+                     plane:  tuple,
+                     min_h:  float = -0.2,
+                     max_h:  float = 0.2) -> np.ndarray:
     ''' Κρατά σημεία σε υψομετρικό εύρος από το επίπεδο '''
     a, b, c, d = plane
     dist = (points @ np.array([a, b, c]) + d) / np.linalg.norm([a, b, c])
@@ -123,6 +125,7 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
      - Tr_velo_to_cam : Ο μετασχηματισμός από το σύστημα αναφοράς
                         του LiDAR στην κάμερα.
      - P2             : Ο πίνακας προβολής της κάμερας.
+     - filter         : Εφαρμογή region growing εύρεσης!
     '''
     visible_points = filter_visible_points(
         pcd, Tr_velo_to_cam, P2, image_shape
@@ -132,21 +135,15 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
     
     (ground_points, plane) = detect_ground_plane(
         visible_points,
-        distance_threshold = 0.02,
+        distance_threshold = 0.025,
         num_iterations     = 20000,
         show = debug
     )
 
     # Νέα γενιά/δοκιμή φίλτρων:
     if filter:
-        (_, mode_h) = analyze_height_distribution(
-            visible_points, plane
-        )
-        if debug:
-            print(f'Ύψος δρόμου (mode): {mode_h:.2f}')
-
         ground_points = enhanced_region_growing_road_detection(
-            visible_points, plane, mode_h
+            visible_points, plane
         )
 
     road_mask = project_points_to_image(
@@ -195,23 +192,6 @@ def overlay_mask(image: np.ndarray,
     image[idx] = cv2.addWeighted(image[idx], 1 - alpha, solid, alpha, 0)
 
     return image;
-
-def analyze_height_distribution(points: np.ndarray,
-                                plane:  np.ndarray) -> None:
-    '''
-    Υπολογίζει histogram των αποστάσεων σημείων
-    από το επίπεδο. Επιστρέφει τα ύψη ταξινομημένα.
-    '''
-    (a, b, c, d) = plane
-    normal = np.array([a, b, c])
-    height = (points @ normal + d) / np.linalg.norm(normal)
-
-    # Ιστογράφημα
-    (counts, bins) = np.histogram(height, bins = 200)
-    max_bin_index = np.argmax(counts)
-    mode_center = 0.5 * (bins[max_bin_index] + bins[max_bin_index + 1])
-
-    return (np.sort(height), mode_center);
 
 # ----- I/O -----
 def load_velodyne_bin(bin_path: str) -> np.ndarray:
@@ -288,7 +268,7 @@ def main():
             image, road_mask, color = (255, 0, 0), alpha = 0.5
         )
 
-        cv2.imshow('Μάσκα από LiDAR', overlay)
+        cv2.imshow('LiDAR ROAD', overlay)
         cv2.waitKey(0)
         
     cv2.destroyAllWindows()
