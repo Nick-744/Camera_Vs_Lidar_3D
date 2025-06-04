@@ -157,7 +157,7 @@ def main():
 
             # --- Ζωγραφικηηηή ---
             if show_road:
-                if np.sum(road_mask_cleaned) != 0:
+                if np.sum(road_mask_cleaned) != 0: # Fail safe...
                     vis = overlay_mask( # Μπλε χρώμα δρόμος!
                         left_color, road_mask_cleaned, (255, 0, 0)
                     )
