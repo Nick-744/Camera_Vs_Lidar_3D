@@ -5,6 +5,8 @@ import open3d as o3d
 from time import time
 import matplotlib.pyplot as plt
 
+from region_growing_helper import enhanced_region_growing_road_detection
+
 def filter_visible_points(pcd:            np.ndarray,
                           Tr_velo_to_cam: np.ndarray,
                           P2:             np.ndarray,
@@ -112,8 +114,7 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
                         P2:             np.ndarray,
                         image_shape:    tuple,
                         filter:         bool = False,
-                        debug:          bool = False,
-                        height_dist:    bool = False) -> tuple:
+                        debug:          bool = False) -> tuple:
     '''
     Επιστρέφει τη μάσκα του δρόμου που βρήκε από το pcd/LiDAR,
     μαζί με τα σημεία του δρόμου και το επίπεδο του δρόμου.
@@ -122,7 +123,6 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
      - Tr_velo_to_cam : Ο μετασχηματισμός από το σύστημα αναφοράς
                         του LiDAR στην κάμερα.
      - P2             : Ο πίνακας προβολής της κάμερας.
-     - height_dist    : Αν True, δείχνει το histogram των υψών.
     '''
     visible_points = filter_visible_points(
         pcd, Tr_velo_to_cam, P2, image_shape
@@ -140,25 +140,14 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
     # Νέα γενιά/δοκιμή φίλτρων:
     if filter:
         (_, mode_h) = analyze_height_distribution(
-            visible_points, plane, height_dist
+            visible_points, plane
         )
-        if debug or height_dist:
+        if debug:
             print(f'Ύψος δρόμου (mode): {mode_h:.2f}')
-        
-        #################################### Testing ####################################
-        # ground_points = filter_by_height(
-        #     visible_points,
-        #     plane,
-        #     min_h = mode_h - 0.05,
-        #     max_h = mode_h + 0.05
-        # )
 
-        ground_points = region_growing_on_height_band(
-            visible_points, plane,
-            min_h=mode_h - 0.05,
-            max_h=mode_h + 0.05
+        ground_points = enhanced_region_growing_road_detection(
+            visible_points, plane, mode_h
         )
-        ################################# END Testing #################################
 
     road_mask = project_points_to_image(
         ground_points, Tr_velo_to_cam, P2, image_shape
@@ -208,10 +197,9 @@ def overlay_mask(image: np.ndarray,
     return image;
 
 def analyze_height_distribution(points: np.ndarray,
-                                plane:  np.ndarray,
-                                show:   bool = False) -> None:
+                                plane:  np.ndarray) -> None:
     '''
-    Υπολογίζει και εμφανίζει histogram των αποστάσεων σημείων
+    Υπολογίζει histogram των αποστάσεων σημείων
     από το επίπεδο. Επιστρέφει τα ύψη ταξινομημένα.
     '''
     (a, b, c, d) = plane
@@ -222,25 +210,6 @@ def analyze_height_distribution(points: np.ndarray,
     (counts, bins) = np.histogram(height, bins = 200)
     max_bin_index = np.argmax(counts)
     mode_center = 0.5 * (bins[max_bin_index] + bins[max_bin_index + 1])
-
-    if show:
-        plt.figure(figsize = (10, 4))
-        plt.hist(height, bins = 200, color = 'steelblue')
-        plt.axvline(
-            mode_center,
-            color = 'red',
-            linestyle = '--',
-            label = 'Mode'
-        )
-
-        plt.title('Κατανομή Υψών σε σχέση με το επίπεδο RANSAC')
-        plt.xlabel('Ύψος από το επίπεδο')
-        plt.ylabel('Αριθμός σημείων')
-
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
 
     return (np.sort(height), mode_center);
 
@@ -275,65 +244,12 @@ def load_calibration(calib_path: str) -> tuple:
 
     return (Tr_velo_to_cam, P2);
 
-############################################### Testing ###############################################
-# from sklearn.neighbors import KDTree
-
-def region_growing_on_height_band(points, plane, min_h, max_h, radius=0.4, angle_thresh_deg=15.0, min_cluster_size=100):
-    a, b, c, d = plane
-    normal = np.array([a, b, c])
-    dist = (points @ normal + d) / np.linalg.norm(normal)
-
-    mask = (dist > min_h) & (dist < max_h)
-    band_points = points[mask]
-
-    if band_points.shape[0] < min_cluster_size:
-        return np.empty((0, 3))
-
-    # Create point cloud and compute normals
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(band_points)
-    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=radius, max_nn=30))
-    normals = np.asarray(pcd.normals)
-
-    tree = KDTree(band_points)
-    visited = np.zeros(len(band_points), dtype=bool)
-    labels = -np.ones(len(band_points), dtype=int)
-    label = 0
-
-    angle_thresh_rad = np.deg2rad(angle_thresh_deg)
-    cos_thresh = np.cos(angle_thresh_rad)
-
-    for i in range(len(band_points)):
-        if visited[i]:
-            continue
-        queue = [i]
-        visited[i] = True
-        labels[i] = label
-        while queue:
-            idx = queue.pop()
-            indices = tree.query_radius([band_points[idx]], r=radius)[0]
-            for j in indices:
-                if not visited[j]:
-                    if np.dot(normals[idx], normals[j]) > cos_thresh:
-                        visited[j] = True
-                        labels[j] = label
-                        queue.append(j)
-        label += 1
-
-    # Keep largest cluster
-    unique, counts = np.unique(labels[labels >= 0], return_counts=True)
-    if len(counts) == 0:
-        return np.empty((0, 3))
-    largest_label = unique[np.argmax(counts)]
-    return band_points[labels == largest_label]
-################################# END Testing #################################
-
 def main():
     base_dir = os.path.dirname(__file__)
 
     image_type = 'um'
     dataset_type = 'testing'
-    #dataset_type = 'training'
+    dataset_type = 'training'
 
     calib_path = os.path.join(base_dir, '..', 'calibration_KITTI.txt')
     (Tr_velo_to_cam, P2) = load_calibration(calib_path)
@@ -363,7 +279,7 @@ def main():
         start = time()
         (road_mask, _, _) = my_road_from_pcd_is(
             points, Tr_velo_to_cam, P2, image.shape,
-            #filter = True
+            filter = True # Καλύτερα αποτελέσματα, αλλά πιο αργό...
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec / {general_name_file}')
 
@@ -374,7 +290,8 @@ def main():
 
         cv2.imshow('Μάσκα από LiDAR', overlay)
         cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        
+    cv2.destroyAllWindows()
 
     return;
 
