@@ -66,7 +66,7 @@ def detect_ground_plane(points:             np.ndarray,
         num_iterations     = num_iterations
     )
 
-    ground = pcd.select_by_index(inliers)
+    ground     = pcd.select_by_index(inliers)
     non_ground = pcd.select_by_index(inliers, invert = True)
     if show:
         ground.paint_uniform_color([0.0, 1.0, 0.0])
@@ -361,9 +361,9 @@ def main():
         points = load_velodyne_bin(bin_path)
 
         start = time()
-        (road_mask, ground_points, plane) = my_road_from_pcd_is(
+        (road_mask, _, _) = my_road_from_pcd_is(
             points, Tr_velo_to_cam, P2, image.shape,
-            filter = True
+            #filter = True
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec / {general_name_file}')
 
