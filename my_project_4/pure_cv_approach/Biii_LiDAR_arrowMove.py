@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import open3d as o3d
 from time import time
+from typing import Tuple, List
 
 from part_B.Bii_LiDAR_obstacle_detect import (
     detect_obstacles_withLiDAR,
@@ -13,6 +14,78 @@ from part_B.Bi_road_detection_pcd import (
     load_calibration,
     project_lidar_to_image
 )
+
+def cast_arrow_along_camera(
+    points:          np.ndarray,
+    obstacles:       List[np.ndarray],
+    Tr_velo_to_cam:  np.ndarray,
+    max_length:      float = 25,
+    step:            float = 0.5,
+    road_color:      Tuple[float, float, float] = (1, 0, 1),
+    collision_color: Tuple[float, float, float] = (1, 0, 0)
+) -> o3d.geometry.TriangleMesh:
+    """
+    Casts a 3D arrow from LiDAR origin in the direction the camera is facing.
+    Stops if it reaches the end of road points or collides with obstacles.
+    The arrow's cylinder center is aligned with the road surface.
+    """
+    # --- Direction from camera rotation ---
+    R = Tr_velo_to_cam[:3, :3]
+    camera_forward = np.array([0., 0., 1.])
+    direction      = R.T @ camera_forward
+    direction      = direction / np.linalg.norm(direction)
+
+    origin = np.array([0., 0., 0.])
+
+    # --- Project road points onto camera direction ---
+    projections = points @ direction
+    projections = projections[projections > 0]
+    road_len    = float(np.max(projections)) \
+                  if projections.size > 0 else 5.
+    if max_length is not None:
+        road_len = min(road_len, max_length)
+
+    # --- Check for obstacle collisions ---
+    arrow_len = road_len
+    for d in np.arange(step, road_len, step):
+        probe = origin + direction * d
+        for obs in obstacles:
+            if np.any(np.linalg.norm(obs - probe, axis = 1) < 1.0):
+                arrow_len = d - step
+                road_color = collision_color
+                break
+        else:
+            continue
+        break
+
+    # --- Create arrow mesh ---
+    arrow = o3d.geometry.TriangleMesh.create_arrow(
+        cylinder_radius = 0.1,
+        cone_radius     = 0.2,
+        cylinder_height = max(0.2, arrow_len - 0.4),
+        cone_height     = 0.4
+    )
+    arrow.paint_uniform_color(road_color)
+
+    # --- Rotate arrow to match direction (default is +Z) ---
+    default_axis = np.array([0., 0., 1.])
+    if not np.allclose(direction, default_axis):
+        axis = np.cross(default_axis, direction)
+        angle = np.arccos(np.clip(np.dot(default_axis, direction), -1.0, 1.0))
+        if np.linalg.norm(axis) > 1e-6:
+            axis = axis / np.linalg.norm(axis)
+            rvec = axis * angle
+            rot, _ = cv2.Rodrigues(rvec)
+            arrow.rotate(rot, center=(0, 0, 0))
+
+    # --- Center alignment with road plane (Z) ---
+    center_pos = origin
+    avg_z = np.mean(points[:, 2]) if len(points) > 0 else 0.0
+    center_pos[2] = avg_z + 0.15 # Move center of arrow to be flush with road height
+
+    arrow.translate(center_pos)
+
+    return arrow;
 
 def prepare_processed_pcd(image:          np.ndarray,
                           points:         np.ndarray,
@@ -56,7 +129,12 @@ def prepare_processed_pcd(image:          np.ndarray,
     obs_pcd.points = o3d.utility.Vector3dVector(obs_points)
     obs_pcd.colors = o3d.utility.Vector3dVector(obs_colors)
 
-    return road_pcd + obs_pcd;
+    # --- Βέλος προσανατολισμού ---
+    arrow_mesh = cast_arrow_along_camera(
+        road_points, list(clusters.values()), Tr_velo_to_cam
+    )
+
+    return road_pcd + obs_pcd + arrow_mesh.sample_points_uniformly(4000);
 
 def project_colors_on_pcd(image:          np.ndarray,
                           points:         np.ndarray,
@@ -81,7 +159,16 @@ TOGGLE_STATE = {'show_raw': False}
 def visualize_toggle(image:          np.ndarray,
                      points:         np.ndarray,
                      P2:             np.ndarray,
-                     Tr_velo_to_cam: np.ndarray) -> None:
+                     Tr_velo_to_cam: np.ndarray,
+                     BEV:            bool = False) -> None:
+    '''
+    Συνδιασμός των Bi και Bii για εύρεση του δρόμου και
+    ανίχνευση εμποδίων με LiDAR + προσθήκη βέλους κατεύθυνσης!
+
+    Parameters:
+     - BEV_: Αν True, τότε η κάμερα θα είναι σε
+             Bird's Eye View (BEV) αρχικά!
+    '''
     start = time()
     temp = (image, points, P2, Tr_velo_to_cam)
     raw_rgb_pcd   = project_colors_on_pcd(*temp)
@@ -92,14 +179,15 @@ def visualize_toggle(image:          np.ndarray,
     vis.create_window(width = 1000, height = 600)
     vis.add_geometry(processed_pcd)
 
-    # --- Camera Car Viewpoint Setup ---
-    # Θέτουμε την κάμερα Open3D να ταιριάζει με την κάμερα KITTI!
-    view_control = vis.get_view_control()
-    params = view_control.convert_to_pinhole_camera_parameters()
+    # --- Camera Car/Bird Viewpoint Setup ---
+    if not BEV:
+        # Θέτουμε την κάμερα Open3D να ταιριάζει με την κάμερα KITTI!
+        view_control = vis.get_view_control()
+        params = view_control.convert_to_pinhole_camera_parameters()
 
-    # Εφαρμογή του μετασχηματισμού LiDAR -> Camera!
-    params.extrinsic = Tr_velo_to_cam # 4x4 matrix: LiDAR -> Camera
-    view_control.convert_from_pinhole_camera_parameters(params)
+        # Εφαρμογή του μετασχηματισμού LiDAR -> Camera!
+        params.extrinsic = Tr_velo_to_cam # 4x4 matrix: LiDAR -> Camera
+        view_control.convert_from_pinhole_camera_parameters(params)
 
     def _toggle_callback(vis_obj):
         TOGGLE_STATE['show_raw'] = not TOGGLE_STATE['show_raw']
@@ -148,13 +236,15 @@ def main():
             print(f'Πρόβλημα με το {general_name_file}')
             continue;
 
-        image = cv2.imread(img_path)
+        image  = cv2.imread(img_path)
         points = load_velodyne_bin(bin_path)
 
-        visualize_toggle(image, points, P2, Tr_velo_to_cam)
+        visualize_toggle(
+            image, points, P2, Tr_velo_to_cam,
+            BEV = False
+        )
 
     return;
-
 
 if __name__ == '__main__':
     main()
