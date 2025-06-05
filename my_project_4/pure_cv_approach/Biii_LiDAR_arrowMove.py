@@ -221,6 +221,7 @@ def main():
     calib_path = os.path.join(base_dir, 'calibration_KITTI.txt')
     (Tr_velo_to_cam, P2) = load_calibration(calib_path)
     
+    print('Πάτα space για εναλλαγή προβολής [raw/processed]!\n')
     for i in range(94):
         general_name_file = (f'{image_type}_0000{i}' if i > 9 \
                              else f'{image_type}_00000{i}')
