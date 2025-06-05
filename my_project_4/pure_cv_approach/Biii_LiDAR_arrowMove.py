@@ -19,25 +19,28 @@ def cast_arrow_along_camera(
     points:          np.ndarray,
     obstacles:       List[np.ndarray],
     Tr_velo_to_cam:  np.ndarray,
-    max_length:      float = 25,
+    max_length:      float = 25.,
     step:            float = 0.5,
     road_color:      Tuple[float, float, float] = (1, 0, 1),
     collision_color: Tuple[float, float, float] = (1, 0, 0)
 ) -> o3d.geometry.TriangleMesh:
-    """
-    Casts a 3D arrow from LiDAR origin in the direction the camera is facing.
-    Stops if it reaches the end of road points or collides with obstacles.
-    The arrow's cylinder center is aligned with the road surface.
-    """
-    # --- Direction from camera rotation ---
+    '''
+    Πρόβαλε 1 3D βέλος από το LiDAR scanner origin προς την κατεύθυνση που
+    κοιτά η κάμερα! Αν το βέλος συναντήσει εμπόδιο, τότε σταμάτα εκεί και
+    αλλάζει το χρώμα του σε κόκκινο [default: collision_color], αλλιώς
+    το βέλος φτάνει μέχρι το τέλος του δρόμου ή max_length. Έχει οριστεί
+    κατάλληλη μετατόπιση για την Z θέση του.
+    '''
+    # Κατεύθυνση βάσει του orientation της κάμερας
     R = Tr_velo_to_cam[:3, :3]
     camera_forward = np.array([0., 0., 1.])
-    direction      = R.T @ camera_forward
-    direction      = direction / np.linalg.norm(direction)
 
-    origin = np.array([0., 0., 0.])
+    direction = R.T @ camera_forward
+    direction = direction / np.linalg.norm(direction)
+    origin    = np.array([0., 0., 0.])
 
-    # --- Project road points onto camera direction ---
+    # Προβολή των σημείων του δρόμου προς την κατεύθυνση της κάμερας,
+    # έτσι ώστε να βρεθεί το μήκος του δρόμου, οπότε και του βέλους!
     projections = points @ direction
     projections = projections[projections > 0]
     road_len    = float(np.max(projections)) \
@@ -45,47 +48,48 @@ def cast_arrow_along_camera(
     if max_length is not None:
         road_len = min(road_len, max_length)
 
-    # --- Check for obstacle collisions ---
+    # Έλεγχος για εμπόδια κατά μήκος του βέλους
     arrow_len = road_len
     for d in np.arange(step, road_len, step):
         probe = origin + direction * d
         for obs in obstacles:
-            if np.any(np.linalg.norm(obs - probe, axis = 1) < 1.0):
-                arrow_len = d - step
+            if np.any(np.linalg.norm(obs - probe, axis = 1) < 1.):
+                arrow_len  = d - step
                 road_color = collision_color
-                break
+                break;
         else:
-            continue
-        break
+            continue;
+        break;
 
-    # --- Create arrow mesh ---
+    # Δημιουργία του βέλους [mesh]
     arrow = o3d.geometry.TriangleMesh.create_arrow(
         cylinder_radius = 0.1,
         cone_radius     = 0.2,
-        cylinder_height = max(0.2, arrow_len - 0.4),
+        cylinder_height = arrow_len,
         cone_height     = 0.4
     )
     arrow.paint_uniform_color(road_color)
 
-    # --- Rotate arrow to match direction (default is +Z) ---
+    # Προσαρμογή του βέλους στην κατεύθυνση της κάμερας
     default_axis = np.array([0., 0., 1.])
     if not np.allclose(direction, default_axis):
-        axis = np.cross(default_axis, direction)
-        angle = np.arccos(np.clip(np.dot(default_axis, direction), -1.0, 1.0))
+        axis  = np.cross(default_axis, direction)
+        angle = np.arccos(np.clip(
+            np.dot(default_axis, direction), -1., 1.
+        ))
         if np.linalg.norm(axis) > 1e-6:
-            axis = axis / np.linalg.norm(axis)
-            rvec = axis * angle
-            rot, _ = cv2.Rodrigues(rvec)
-            arrow.rotate(rot, center=(0, 0, 0))
+            axis     = axis / np.linalg.norm(axis)
+            rvec     = axis * angle
+            (rot, _) = cv2.Rodrigues(rvec)
+            arrow.rotate(rot, center = (0, 0, 0))
 
-    # --- Center alignment with road plane (Z) ---
-    center_pos = origin
-    avg_z = np.mean(points[:, 2]) if len(points) > 0 else 0.0
-    center_pos[2] = avg_z + 0.15 # Move center of arrow to be flush with road height
+    # Προσαρμογή της θέσης του βέλους
+    avg_z = np.mean(points[:, 2]) if len(points) > 0 else 0.
+    origin[2] = avg_z + 0.15 # Λίγο πιο πάνω από τον δρόμο
+    arrow.translate(origin)
 
-    arrow.translate(center_pos)
-
-    return arrow;
+    # Δειγματοληψία, γιατί θέλουμε pcd!
+    return arrow.sample_points_uniformly(4000);
 
 def prepare_processed_pcd(image:          np.ndarray,
                           points:         np.ndarray,
@@ -134,7 +138,7 @@ def prepare_processed_pcd(image:          np.ndarray,
         road_points, list(clusters.values()), Tr_velo_to_cam
     )
 
-    return road_pcd + obs_pcd + arrow_mesh.sample_points_uniformly(4000);
+    return road_pcd + obs_pcd + arrow_mesh;
 
 def project_colors_on_pcd(image:          np.ndarray,
                           points:         np.ndarray,
@@ -170,7 +174,7 @@ def visualize_toggle(image:          np.ndarray,
              Bird's Eye View (BEV) αρχικά!
     '''
     start = time()
-    temp = (image, points, P2, Tr_velo_to_cam)
+    temp  = (image, points, P2, Tr_velo_to_cam)
     raw_rgb_pcd   = project_colors_on_pcd(*temp)
     processed_pcd = prepare_processed_pcd(*temp)
     print(f'Χρόνος εκτέλεσης: {time() - start:.2f} sec')
