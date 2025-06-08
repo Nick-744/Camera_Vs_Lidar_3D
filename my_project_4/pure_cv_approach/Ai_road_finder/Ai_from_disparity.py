@@ -231,11 +231,12 @@ def main():
     
     image_type   = 'um'
     dataset_type = 'testing'
-    dataset_type = 'training'
+    # dataset_type = 'training'
 
     calib_path = os.path.join(base_dir, '..', f'calibration_KITTI.txt')
     calib      = parse_kitti_calib(calib_path)
 
+    # for i in range(99, 100): # Aiv
     for i in range(94):
         general_name_file = (f'{image_type}_0000{i}.png' if i > 9 \
                              else f'{image_type}_00000{i}.png')
@@ -266,6 +267,8 @@ def main():
             right_gray_cropped,
             left_color.shape,
             calib,
+            ransac_threshold = 0.03,
+            # ransac_threshold = 0.12, # Για το Aiv...
             crop_bottom = True
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
