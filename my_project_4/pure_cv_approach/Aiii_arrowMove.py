@@ -13,10 +13,10 @@ def draw_arrow_right_half(
     img:       np.ndarray,
     road_mask: np.ndarray,
     boxes:     List[Tuple[int, int, int, int]],
-    line_len:  int = -1,
+    line_len:  int  = -1,
     full_road: bool = False,
-    step_px:   int = 8,
-    min_pts:   int = 8,
+    step_px:   int  = 8,
+    min_pts:   int  = 8,
     rj_filter: bool = True
 ) -> np.ndarray:
     '''
@@ -143,10 +143,11 @@ def main():
             left_gray_cropped, right_gray_cropped,
             calib
         )
+
         vis = overlay_mask(left_color, road_mask_cleaned, ROAD)
         draw_bboxes(vis, boxes)
-
         vis = draw_arrow_right_half(vis, road_mask_cleaned, boxes)
+        
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
         cv2.imshow('Arrow Visualization', vis)
