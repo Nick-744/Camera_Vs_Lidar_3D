@@ -6,7 +6,8 @@ sys.path.append(os.path.abspath(
 
 # --- Camera Modules ---
 from Aii_object_detection.Aii_obj_detection_current import (
-    YOLODetector, crop_bottom_half, overlay_mask, draw_bboxes
+    YOLODetector, crop_bottom_half, overlay_mask,
+    draw_bboxes, detect_obstacles
 )
 from Aiii_arrowMove import (parse_kitti_calib, draw_arrow_right_half)
 
@@ -20,8 +21,12 @@ import numpy as np
 import cv2
 
 # ========================= Camera Wall Test =========================
-def test_camera_wall(calib_path: str, general_name_file: str) -> None:
-    yolo_detector = YOLODetector()
+def test_camera_wall(calib_path:        str,
+                     general_name_file: str,
+                     use_yolo:          bool = True) -> None:
+    if use_yolo:
+        yolo_detector = YOLODetector()
+        
     calib         = parse_kitti_calib(calib_path)
     ROAD          = (255, 0, 0) # Μπλε overlay για το δρόμο!
 
@@ -44,11 +49,20 @@ def test_camera_wall(calib_path: str, general_name_file: str) -> None:
 
         # Βασική εκτέλεση
         start = time()
-        (boxes, _, road_mask_cleaned) = yolo_detector.detect(
-            left_color,
-            left_gray_cropped, right_gray_cropped,
-            calib
-        )
+        if use_yolo:
+            (boxes, _, road_mask_cleaned) = yolo_detector.detect(
+                left_color,
+                left_gray_cropped, right_gray_cropped,
+                calib
+            )
+        else:
+            (boxes, _, road_mask_cleaned) = detect_obstacles(
+                left_gray_cropped,
+                right_gray_cropped,
+                original_shape = left_color.shape,
+                calib          = calib,
+                fast           = True
+            )
 
         # 2D αναπαράσταση
         vis = overlay_mask(left_color, road_mask_cleaned, ROAD)
