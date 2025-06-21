@@ -20,6 +20,8 @@ from time import time
 import numpy as np
 import cv2
 
+NUMBER_OF_TESTS = 4
+
 # ========================= Camera Wall Test =========================
 def test_camera_wall(calib_path:        str,
                      general_name_file: str,
@@ -27,16 +29,16 @@ def test_camera_wall(calib_path:        str,
     if use_yolo:
         yolo_detector = YOLODetector()
         
-    calib         = parse_kitti_calib(calib_path)
-    ROAD          = (255, 0, 0) # Μπλε overlay για το δρόμο!
+    calib = parse_kitti_calib(calib_path)
+    ROAD  = (255, 0, 0) # Μπλε overlay για το δρόμο!
 
     print('\n-> Camera Wall Test')
-    for i in range(1, 4):
+    for i in range(1, NUMBER_OF_TESTS + 1):
         left_path  = os.path.join(
-            base_dir, 'DATA', f'{general_name_file}_left_{i}.png'
+            base_dir, 'WALL_DATA', f'{general_name_file}_left_{i}.png'
         )
         right_path = os.path.join(
-            base_dir, 'DATA', f'{general_name_file}_right_{i}.png'
+            base_dir, 'WALL_DATA', f'{general_name_file}_right_{i}.png'
         )
 
         left_color = cv2.imread(left_path)
@@ -69,8 +71,8 @@ def test_camera_wall(calib_path:        str,
         draw_bboxes(vis, boxes)
         vis = draw_arrow_right_half(
             vis, road_mask_cleaned, boxes,
-            full_road = not (True * (i % 2)),
-            rj_filter = True * (i % 2)
+            full_road = (not (True * (i % 2))) and (i != 4),
+            rj_filter = (True * (i % 2)) or (i == 4)
         )
 
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
@@ -88,18 +90,19 @@ def test_lidar_wall(calib_path: str, general_name_file: str) -> None:
 
     walls = [
         #   x_range,   y_range,   z_range
-        (12.7, 12.8,   -5, 5.4, -1.6, 1.4),
+        (12.7, 12.8, -5.0, 5.4, -1.6, 1.4),
         (11.5, 11.6, -5.3, 5.5, -1.8, 1.4),
-        (  16, 16.1, -5.6, 5.2, -1.6, 1.6)
+        (16.0, 16.1, -5.6, 5.2, -1.6, 1.6),
+        (12.1, 12.2, -5.6, 5.8, -1.7, 1.7)
     ]
 
     print('\n-> LiDAR Wall Test')
-    for i in range(1, 4):
+    for i in range(4, NUMBER_OF_TESTS + 1):
         bin_path = os.path.join(
-            base_dir, 'DATA', f'{general_name_file}_{i}.bin'
+            base_dir, 'WALL_DATA', f'{general_name_file}_{i}.bin'
         )
         img_path = os.path.join(
-            base_dir, 'DATA', f'{general_name_file}_left_{i}.png'
+            base_dir, 'WALL_DATA', f'{general_name_file}_left_{i}.png'
         )
 
         # 3D αναπαράσταση
@@ -147,7 +150,7 @@ def main():
     general_name_file = 'fake'
     calib_path        = os.path.join(base_dir, '..', f'calibration_KITTI.txt')
 
-    test_camera_wall(calib_path, general_name_file)
+    # test_camera_wall(calib_path, general_name_file)
     test_lidar_wall(calib_path, general_name_file)
 
     return;
