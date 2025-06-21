@@ -19,10 +19,11 @@ def cast_arrow_along_camera(
     points:          np.ndarray,
     obstacles:       List[np.ndarray],
     Tr_velo_to_cam:  np.ndarray,
-    max_length:      float = 25.,
+    max_length:      float = 25., # Δες prepare_processed_pcd
     step:            float = 0.5,
     road_color:      Tuple[float, float, float] = (1, 0, 1),
-    collision_color: Tuple[float, float, float] = (1, 0, 0)
+    collision_color: Tuple[float, float, float] = (1, 0, 0),
+    origin:          np.ndarray = np.array([0., 0., 0.]) # Δες prepare_processed_pcd
 ) -> o3d.geometry.TriangleMesh:
     '''
     Πρόβαλε 1 3D βέλος από το LiDAR scanner origin προς την κατεύθυνση που
@@ -37,7 +38,6 @@ def cast_arrow_along_camera(
 
     direction = R.T @ camera_forward
     direction = direction / np.linalg.norm(direction)
-    origin    = np.array([0., 0., 0.])
 
     # Προβολή των σημείων του δρόμου προς την κατεύθυνση της κάμερας,
     # έτσι ώστε να βρεθεί το μήκος του δρόμου, οπότε και του βέλους!
@@ -91,10 +91,21 @@ def cast_arrow_along_camera(
     # Δειγματοληψία, γιατί θέλουμε pcd!
     return arrow.sample_points_uniformly(4000);
 
-def prepare_processed_pcd(image:          np.ndarray,
-                          points:         np.ndarray,
-                          P2:             np.ndarray,
-                          Tr_velo_to_cam: np.ndarray) -> o3d.geometry.PointCloud:
+def prepare_processed_pcd(
+    image:          np.ndarray,
+    points:         np.ndarray,
+    P2:             np.ndarray,
+    Tr_velo_to_cam: np.ndarray,
+    max_length:     float = 25.,
+    origin:         np.ndarray = np.array([0., 0., 0.])
+) -> o3d.geometry.PointCloud:
+    '''
+    Parameters:
+     - origin_: Η θέση του LiDAR scanner στο σύστημα συντεταγμένων.
+                Προστέθηκε για να διορθωθεί ένα πρόβλημα στο CARLA demo:
+                Όταν η αρχή του βέλους είναι στο (0, 0, 0), τότε αυτό
+                χτυπά στην μύτη του ego vehicle, οπότε είναι πάντα κόκκινο!
+    '''
     (_, clusters, road_points) = detect_obstacles_withLiDAR(
         image, points, P2, Tr_velo_to_cam
     )
@@ -135,7 +146,11 @@ def prepare_processed_pcd(image:          np.ndarray,
 
     # --- Βέλος προσανατολισμού ---
     arrow_mesh = cast_arrow_along_camera(
-        road_points, list(clusters.values()), Tr_velo_to_cam
+        road_points,
+        list(clusters.values()),
+        Tr_velo_to_cam,
+        max_length = max_length,
+        origin     = origin
     )
 
     return road_pcd + obs_pcd + arrow_mesh;

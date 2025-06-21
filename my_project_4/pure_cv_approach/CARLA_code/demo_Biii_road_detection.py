@@ -1,24 +1,24 @@
-# demo_Bi_road_detection.py
+# demo_Biii_road_detection.py
 
 import os
 import sys
 import cv2
 import glob
 import numpy as np
+import open3d as o3d
 from datetime import datetime
 
 # --- Imports ---
 from carla_helpers import (
     get_kitti_calibration,
     setup_camera,
-    overlay_mask,
     setup_CARLA
 )
 
-# Προσθήκη του path για την συνάρτηση εύρεσης του δρόμου από το pcd!
-part_B_module_path = os.path.abspath(os.path.join('..', 'part_B'))
+# Προσθήκη path για την υλοποίηση των ερωτημάτων του part B!
+part_B_module_path = os.path.abspath(os.path.join('..'))
 sys.path.append(part_B_module_path)
-from Bi_road_detection_pcd import my_road_from_pcd_is
+from Biii_LiDAR_arrowMove import prepare_processed_pcd
 
 # --- CARLA egg setup
 try:
@@ -103,11 +103,37 @@ def main():
         camera = camera, lidar = vehicle
     )
 
+    # --- Διαμόρφωση της προβολής του pcd ---
+    theta = np.radians(90)
+    cos_t = np.cos(theta)
+    sin_t = np.sin(theta)
+    Rz    = np.array([ # Rotation matrix
+        [cos_t, -sin_t, 0, 0],
+        [sin_t,  cos_t, 0, 0],
+        [0,      0,     1, 0],
+        [0,      0,     0, 1]
+    ])
+    flip = np.array([ # Transformation matrix
+        [1,  0,  0, 0],
+        [0, -1,  0, 0], # Flip Y-axis
+        [0,  0,  1, 0],
+        [0,  0,  0, 1]
+    ])
+    T = Rz @ flip
+
     print('Το setup ολοκληρώθηκε!')
 
     # --- Main loop
     dt0 = datetime.now()
     try:
+        pcd = o3d.geometry.PointCloud() # Empty pcd
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(
+            window_name = 'LiDAR Viewer - Part B',
+            width = 800, height = 600
+        )
+        geometry_added = False
+        
         while True:
             world.tick()
 
@@ -117,17 +143,28 @@ def main():
 
             # .copy() -> Assignment destination is read-only
             display = latest_rgb['frame'].copy()
-            (mask, _, _) = my_road_from_pcd_is(
-                raw_lidar_points,
-                Tr_velo_to_cam,
-                P2,
-                (HEIGHT, WIDTH)
-            )
 
-            # Εφαρμογή μάσκας στο display
-            display = overlay_mask(
-                display, mask, color = (255, 0, 0)
+            # Ενημέρωση του pcd με τα νέα δεδομένα LiDAR
+            new_pcd = prepare_processed_pcd(
+                display,
+                raw_lidar_points,
+                P2, Tr_velo_to_cam,
+                max_length = 6.,
+                origin     = np.array([3., 0., 0.]),
             )
+            new_pcd.transform(T)
+            pcd.points = new_pcd.points
+            pcd.colors = new_pcd.colors
+
+            # Αρχικοποίηση της προβολής του LiDAR
+            if not geometry_added:
+                vis.add_geometry(pcd)
+                geometry_added = True
+            else:
+                vis.update_geometry(pcd)
+            vis.poll_events()
+            vis.update_renderer()
+
             cv2.imshow('Dash Camera', display)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break;
@@ -145,6 +182,7 @@ def main():
         lidar.destroy()
         camera.destroy()
         vehicle.destroy()
+        vis.destroy_window()
         cv2.destroyAllWindows()
         print('\nΕπιτυχής εκκαθάριση!')
 
