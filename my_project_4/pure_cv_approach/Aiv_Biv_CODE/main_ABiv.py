@@ -53,7 +53,11 @@ def test_camera_wall(calib_path: str, general_name_file: str) -> None:
         # 2D αναπαράσταση
         vis = overlay_mask(left_color, road_mask_cleaned, ROAD)
         draw_bboxes(vis, boxes)
-        vis = draw_arrow_right_half(vis, road_mask_cleaned, boxes)
+        vis = draw_arrow_right_half(
+            vis, road_mask_cleaned, boxes,
+            full_road = not (True * (i % 2)),
+            rj_filter = True * (i % 2)
+        )
 
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec')
 
@@ -69,9 +73,10 @@ def test_lidar_wall(calib_path: str, general_name_file: str) -> None:
     (Tr_velo_to_cam, P2) = load_calibration(calib_path)
 
     walls = [
-        (12.7, 12.8, -5, 5.4, -1.6, 1.4), # x_range, y_range, z_range
-        (12.7, 12.8, -5, 5.4, -1.6, 1.4), # ADJUST THESE VALUES!!!!!!
-        (12.7, 12.8, -5, 5.4, -1.6, 1.4)  # ADJUST THESE VALUES!!!!!!
+        #   x_range,   y_range,   z_range
+        (12.7, 12.8,   -5, 5.4, -1.6, 1.4),
+        (11.5, 11.6, -5.3, 5.5, -1.8, 1.4),
+        (  16, 16.1, -5.6, 5.2, -1.6, 1.6)
     ]
 
     print('\n-> LiDAR Wall Test')
@@ -128,8 +133,7 @@ def main():
     general_name_file = 'fake'
     calib_path        = os.path.join(base_dir, '..', f'calibration_KITTI.txt')
 
-    # test_camera_wall(calib_path, general_name_file)
-
+    test_camera_wall(calib_path, general_name_file)
     test_lidar_wall(calib_path, general_name_file)
 
     return;
