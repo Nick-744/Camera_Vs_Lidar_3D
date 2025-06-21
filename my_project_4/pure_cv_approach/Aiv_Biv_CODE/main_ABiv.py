@@ -97,7 +97,7 @@ def test_lidar_wall(calib_path: str, general_name_file: str) -> None:
     ]
 
     print('\n-> LiDAR Wall Test')
-    for i in range(4, NUMBER_OF_TESTS + 1):
+    for i in range(1, NUMBER_OF_TESTS + 1):
         bin_path = os.path.join(
             base_dir, 'WALL_DATA', f'{general_name_file}_{i}.bin'
         )
@@ -150,7 +150,7 @@ def main():
     general_name_file = 'fake'
     calib_path        = os.path.join(base_dir, '..', f'calibration_KITTI.txt')
 
-    # test_camera_wall(calib_path, general_name_file)
+    test_camera_wall(calib_path, general_name_file)
     test_lidar_wall(calib_path, general_name_file)
 
     return;
