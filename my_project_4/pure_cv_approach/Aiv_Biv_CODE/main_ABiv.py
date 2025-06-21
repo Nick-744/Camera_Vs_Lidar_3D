@@ -16,16 +16,16 @@ from Biii_LiDAR_arrowMove import (
 )
 
 from time import time
+import numpy as np
 import cv2
 
-def main():
-    general_name_file = 'fake'
-    calib_path        = os.path.join(base_dir, '..', f'calibration_KITTI.txt')
-
-    # =================== Camera Wall Test ===================
+# ========================= Camera Wall Test =========================
+def test_camera_wall(calib_path: str, general_name_file: str) -> None:
     yolo_detector = YOLODetector()
     calib         = parse_kitti_calib(calib_path)
     ROAD          = (255, 0, 0) # Μπλε overlay για το δρόμο!
+
+    print('\n-> Camera Wall Test')
     for i in range(1, 4):
         left_path  = os.path.join(
             base_dir, 'DATA', f'{general_name_file}_left_{i}.png'
@@ -62,8 +62,19 @@ def main():
 
     cv2.destroyAllWindows()
 
-    # =================== LiDAR Visualization ===================
+    return;
+
+# ========================= LiDAR Wall Test =========================
+def test_lidar_wall(calib_path: str, general_name_file: str) -> None:
     (Tr_velo_to_cam, P2) = load_calibration(calib_path)
+
+    walls = [
+        (12.7, 12.8, -5, 5.4, -1.6, 1.4), # x_range, y_range, z_range
+        (12.7, 12.8, -5, 5.4, -1.6, 1.4), # ADJUST THESE VALUES!!!!!!
+        (12.7, 12.8, -5, 5.4, -1.6, 1.4)  # ADJUST THESE VALUES!!!!!!
+    ]
+
+    print('\n-> LiDAR Wall Test')
     for i in range(1, 4):
         bin_path = os.path.join(
             base_dir, 'DATA', f'{general_name_file}_{i}.bin'
@@ -75,10 +86,51 @@ def main():
         # 3D αναπαράσταση
         image  = cv2.imread(img_path)
         points = load_velodyne_bin(bin_path)
+        points = add_synthetic_wall(
+            points,
+            x_range = walls[i-1][ :2],
+            y_range = walls[i-1][2:4],
+            z_range = walls[i-1][4: ],
+            density = 0.1
+        )
         visualize_toggle(
             image, points, P2, Tr_velo_to_cam,
-            BEV = False
+            # BEV = True
         )
+    
+    return;
+
+# --- Helpers ---
+def add_synthetic_wall(points:  np.ndarray,
+                       x_range: tuple,
+                       y_range: tuple,
+                       z_range: tuple,
+                       density: float = 0.2) -> np.ndarray:
+    '''
+    Προσθήκη ενός τεχνητού τοίχου στο PCD του LiDAR.
+
+    Parameters:
+        density: Η απόσταση μεταξύ των σημείων του τοίχου.
+
+    Returns:
+        Σύνθεση των αρχικών σημείων με τα σημεία του τοίχου.
+    '''
+    x_vals = np.arange(x_range[0], x_range[1] + density, density)
+    y_vals = np.arange(y_range[0], y_range[1] + density, density)
+    z_vals = np.arange(z_range[0], z_range[1] + density, density)
+    wall   = np.array(np.meshgrid(x_vals, y_vals, z_vals)).reshape(3, -1).T
+
+    return np.vstack((points, wall));
+
+
+
+def main():
+    general_name_file = 'fake'
+    calib_path        = os.path.join(base_dir, '..', f'calibration_KITTI.txt')
+
+    # test_camera_wall(calib_path, general_name_file)
+
+    test_lidar_wall(calib_path, general_name_file)
 
     return;
 
