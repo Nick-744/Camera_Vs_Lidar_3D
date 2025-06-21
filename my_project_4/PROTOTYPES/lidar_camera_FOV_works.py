@@ -9,10 +9,13 @@ from matplotlib import cm
 from datetime import datetime
 
 # Setup Carla Python API path
-sys.path.append(glob.glob('../CARLA_0.9.11/WindowsNoEditor/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
-    sys.version_info.major,
-    sys.version_info.minor,
-    'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
+sys.path.append(
+    glob.glob(
+        '../CARLA_0.9.11/WindowsNoEditor/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
+            sys.version_info.major, sys.version_info.minor,
+            'win-amd64' if os.name == 'nt' else 'linux-x86_64'
+        ))[0]
+)
 import carla
 
 # --------------------- Global Colormap ---------------------
@@ -51,9 +54,9 @@ def get_transform_matrix(transform):
 
 def transform_lidar_to_camera_convention(points_lidar):
     points_cam = np.zeros_like(points_lidar)
-    points_cam[:, 0] = points_lidar[:, 1]     # X_cam = Y_lidar
-    points_cam[:, 1] = -points_lidar[:, 2]    # Y_cam = -Z_lidar
-    points_cam[:, 2] = points_lidar[:, 0]     # Z_cam = X_lidar
+    points_cam[:, 0] = points_lidar[:, 1]  # X_cam = Y_lidar
+    points_cam[:, 1] = -points_lidar[:, 2] # Y_cam = -Z_lidar
+    points_cam[:, 2] = points_lidar[:, 0]  # Z_cam = X_lidar
     return points_cam
 
 def filter_visible_lidar_points(points_lidar, lidar_to_camera, camera_intrinsic, image_shape):
@@ -91,9 +94,18 @@ def lidar_callback(point_cloud, point_list):
         np.interp(intensity_col, VID_RANGE, VIRIDIS[:, 2])]
 
     visible_points = filter_visible_lidar_points(
-        points, lidar_to_camera_matrix, camera_intrinsic_matrix, (600, 800))
+        points, lidar_to_camera_matrix, camera_intrinsic_matrix, (600, 800)
+    )
+    
+    # --- Apply flipping transform ---
+    flip_matrix = np.array([
+        [1,  0,  0],
+        [0, -1,  0],
+        [0,  0, -1]
+    ])
+    points_flipped = visible_points @ flip_matrix.T
 
-    point_list.points = o3d.utility.Vector3dVector(visible_points)
+    point_list.points = o3d.utility.Vector3dVector(points_flipped)
     point_list.colors = o3d.utility.Vector3dVector(int_color[:len(visible_points)])
 
 def camera_callback(image):
