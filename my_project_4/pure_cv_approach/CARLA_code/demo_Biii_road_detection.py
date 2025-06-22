@@ -38,7 +38,7 @@ except:
 import carla
 
 # --- Image buffer
-latest_rgb = {'frame': None}
+latest_rgb       = {'frame': None}
 raw_lidar_points = None
 
 # --- Callbacks
@@ -114,10 +114,10 @@ def main():
         [0,      0,     0, 1]
     ])
     flip = np.array([ # Transformation matrix
-        [1,  0,  0, 0],
-        [0, -1,  0, 0], # Flip Y-axis
-        [0,  0,  1, 0],
-        [0,  0,  0, 1]
+        [1,  0, 0, 0],
+        [0, -1, 0, 0], # Flip Y-axis
+        [0,  0, 1, 0],
+        [0,  0, 0, 1]
     ])
     T = Rz @ flip
 
@@ -130,7 +130,7 @@ def main():
         vis = o3d.visualization.Visualizer()
         vis.create_window(
             window_name = 'LiDAR Viewer - Part B',
-            width = 800, height = 600
+            width = WIDTH, height = HEIGHT
         )
         geometry_added = False
         
