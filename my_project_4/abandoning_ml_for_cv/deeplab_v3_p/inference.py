@@ -40,9 +40,12 @@ def main():
     base_path = dirname(abspath(__file__))
 
     # Φορτώνουμε το μοντέλο που εκπαιδεύσαμε με το train.py!
+    my_trained_model = abspath(join(
+        base_path, 'my_road_model.pth'
+    ))
     model = my_model.get_model(device)
     model.load_state_dict(torch.load(
-        'my_road_model.pth', map_location = 'cpu', weights_only = True
+        my_trained_model, map_location = 'cpu', weights_only = True
     ))
     model.eval()
 
@@ -53,8 +56,7 @@ def main():
     image_path = abspath(join(
         base_path, '..', '..',
         'KITTI', 'data_road', images_type, 'image_2'
-    )
-    ) # Για test, υπάρχει από:
+    )) # Για test, υπάρχει από:
     # um_000000.png  -> um_000095.png
     # umm_000000.png -> umm_000093.png
     # uu_000000.png  -> uu_000099.png
