@@ -259,7 +259,7 @@ def main():
         start = time()
         (road_mask, _, _) = my_road_from_pcd_is(
             points, Tr_velo_to_cam, P2, image.shape,
-            filter = True # Καλύτερα αποτελέσματα, αλλά πιο αργό...
+            # filter = True # Καλύτερα αποτελέσματα, αλλά πιο αργό...
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec / {general_name_file}')
 
