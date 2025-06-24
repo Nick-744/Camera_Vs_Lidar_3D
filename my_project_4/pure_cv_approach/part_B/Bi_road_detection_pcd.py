@@ -4,8 +4,6 @@ import numpy as np
 import open3d as o3d
 from time import time
 
-from region_growing_helper import enhanced_region_growing_road_detection
-
 def filter_visible_points(pcd:            np.ndarray,
                           Tr_velo_to_cam: np.ndarray,
                           P2:             np.ndarray,
@@ -115,7 +113,6 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
                         Tr_velo_to_cam: np.ndarray,
                         P2:             np.ndarray,
                         image_shape:    tuple,
-                        filter:         bool = False,
                         debug:          bool = False) -> tuple:
     '''
     Επιστρέφει τη μάσκα του δρόμου που βρήκε από το pcd/LiDAR,
@@ -125,7 +122,8 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
      - Tr_velo_to_cam : Ο μετασχηματισμός από το σύστημα αναφοράς
                         του LiDAR στην κάμερα.
      - P2             : Ο πίνακας προβολής της κάμερας.
-     - filter         : Εφαρμογή region growing εύρεσης!
+     - filter         : Τελικά δεν υλοποιήθηκε λόγω αύξησης του
+                        χρόνου εκτέλεσης!
     '''
     visible_points = filter_visible_points(
         pcd, Tr_velo_to_cam, P2, image_shape
@@ -139,12 +137,6 @@ def my_road_from_pcd_is(pcd:            np.ndarray,
         num_iterations     = 20000,
         show = debug
     )
-
-    # Νέα γενιά/δοκιμή φίλτρων:
-    if filter:
-        ground_points = enhanced_region_growing_road_detection(
-            visible_points, plane
-        )
 
     road_mask = project_points_to_image(
         ground_points, Tr_velo_to_cam, P2, image_shape
@@ -258,8 +250,7 @@ def main():
 
         start = time()
         (road_mask, _, _) = my_road_from_pcd_is(
-            points, Tr_velo_to_cam, P2, image.shape,
-            # filter = True # Καλύτερα αποτελέσματα, αλλά πιο αργό...
+            points, Tr_velo_to_cam, P2, image.shape
         )
         print(f'Διάρκεια εκτέλεσης: {time() - start:.2f} sec / {general_name_file}')
 
