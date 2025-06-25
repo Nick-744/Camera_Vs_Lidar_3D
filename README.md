@@ -79,6 +79,25 @@ And for CARLA support:
 
 ---
 
+## 📁 Project Layout
+
+```
+my_project_4/
+│
+├── abandoning_ml_for_cv/          # Initial ML-based experiments (deprecated)
+├── CARLA_0.9.11/                  # CARLA simulator folder (v9.11)
+├── KITTI/                         # KITTI dataset
+├── more/                          # Additional resources
+├── PROTOTYPES/                    # Intermediate/demo code versions
+├── pure_cv_approach/              # Final CV-based pipeline
+│
+├── CameraVsLidar-Report.pdf       # Final project report
+├── Project_4_2025.pdf             # Assignment/brief document
+├── general_requirements.txt       # Python dependency list
+```
+
+---
+
 ## 🔸 Extras:
 
 This repo also includes complete answers to all lab exercises from the semester [Lab1 -> Lab7].
