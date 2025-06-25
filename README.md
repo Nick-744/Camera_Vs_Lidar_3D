@@ -1,7 +1,9 @@
 # Camera_Vs_Lidar_3D
 3Δ Υπολογιστική Γεωμετρία και Όραση (EE844)
 
-This project implements the tasks outlined in the provided assignment, focused on Computer Graphics, 2D images, and 3D point clouds.
+---
+
+This project [my_project_4] implements the tasks outlined in the provided assignment, focused on Computer Graphics, 2D images, and 3D point clouds.
 
 ## Overview
 
@@ -9,7 +11,7 @@ The goal of this project is to process visual and spatial data to detect roads, 
 
 ---
 
-### Part A: 2D Image Processing
+### - Part A: 2D Image Processing 
 
 1. **Road Boundary Detection**  
    Detect the road boundaries and color the two traffic lanes differently from the off-road areas.
@@ -25,38 +27,33 @@ The goal of this project is to process visual and spatial data to detect roads, 
 
 ---
 
-### Part B: 3D Point Cloud Processing
+### - Part B: 3D Point Cloud Processing
 
-5. **Road Detection from 3D Point Cloud**  
+1. **Road Detection from 3D Point Cloud**  
    Use the 3D point cloud to detect the road and its boundaries. Classify and color different regions accordingly.
 
-6. **Obstacle Detection**  
+2. **Obstacle Detection**  
    Identify road obstacles (e.g., cars, pedestrians, and other objects). No classification is required.
 
-7. **Motion Vector Estimation**  
+3. **Motion Vector Estimation**  
    As in Part A, compute the car’s correct movement vector and draw a detour if obstacles exist.
+   
+   DEMO: https://youtu.be/DXkgFZ9ZrB4
 
-8. **Environment Rendering**  
+4. **Environment Rendering**  
    Using the setup from Part A.iv, perform steps ii), iii), vi), and vii) in this 3D context.
 
 ---
 
-## Technologies Used
+### 🔹 Bonus: CARLA Simulation
 
-- Python / C++ (depending on implementation)
-- OpenCV
-- PCL / Open3D (for 3D point cloud processing)
-- NumPy
-- Matplotlib (for visualizations)
+As an extension, the core parts of the project have been integrated into the [CARLA simulator](https://carla.org/) to demonstrate real-time performance in a virtual driving environment.
 
-## Notes
-
-- This project is designed for educational use in the context of a Computer Graphics course.
-- The implementation focuses on core visual processing without unnecessary classification overhead.
+**Video Demonstrations:**
+- [Demo 1 – CARLA Simulation - LiDAR road + obstacles detection](https://youtu.be/pzfL9UhPmQs?si=nfasl8OCLi1Re6O4)  
+- [Demo 2 – Camera Road/Obstacle detection - CARLA](https://youtu.be/frrVAOl6k38)
 
 ---
 
-## License
-
-This project is licensed under the MIT License.
-
+🔸 Extras:
+This repo also includes complete answers to all lab exercises from the semester [Lab1 -> Lab7].
