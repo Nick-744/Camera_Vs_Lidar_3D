@@ -3,7 +3,7 @@
 
 ---
 
-This project [my_project_4] implements the tasks outlined in the provided assignment, focused on Computer Graphics, 2D images, and 3D point clouds.
+This project [`my_project_4`] implements the tasks outlined in the provided assignment, focused on Computer Graphics, 2D images, and 3D point clouds.
 
 ## Overview
 
@@ -38,7 +38,7 @@ The goal of this project is to process visual and spatial data to detect roads, 
 3. **Motion Vector Estimation**  
    As in Part A, compute the car’s correct movement vector and draw a detour if obstacles exist.
    
-   DEMO: https://youtu.be/DXkgFZ9ZrB4
+   **Demo:** [Biii_LiDAR_arrowMove.py DEMO](https://youtu.be/DXkgFZ9ZrB4)
 
 4. **Environment Rendering**  
    Using the setup from Part A.iv, perform steps ii), iii), vi), and vii) in this 3D context.
@@ -53,7 +53,32 @@ As an extension, the core parts of the project have been integrated into the [CA
 - [Demo 1 – CARLA Simulation - LiDAR road + obstacles detection](https://youtu.be/pzfL9UhPmQs?si=nfasl8OCLi1Re6O4)  
 - [Demo 2 – Camera Road/Obstacle detection - CARLA](https://youtu.be/frrVAOl6k38)
 
+> ⚠️ **Note:** This project uses **CARLA version 0.9.11**, which **requires Python 3.7**.  
+> Make sure to also install the dependencies listed in:  
+> `CARLA_0.9.11/WindowsNoEditor/PythonAPI/examples/requirements.txt`  
+> → [CARLA releases](https://github.com/carla-simulator/carla/releases)
+
 ---
 
-🔸 Extras:
+## 🔧 Installation Requirements
+
+Core dependencies
+```bash
+pip install -r my_project_4/general_requirements.txt
+```
+Or install individually:
+```bash
+pip install numpy opencv-python matplotlib open3d scikit-image scikit-learn torch torchvision joblib yolov5
+```
+
+And for CARLA support:
+
+(see: `CARLA_0.9.11/WindowsNoEditor/PythonAPI/examples/requirements.txt`)
+
+> ⚠️ Make sure you're using **Python 3.7**, as required by CARLA 0.9.11.
+
+---
+
+## 🔸 Extras:
+
 This repo also includes complete answers to all lab exercises from the semester [Lab1 -> Lab7].
