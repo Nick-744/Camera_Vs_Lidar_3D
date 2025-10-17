@@ -1,0 +1,9 @@
+beartype
+nptyping
+numpy==1.26.4
+open3d==0.19.0
+pyglet==2.0.12
+PyQt5==5.15.11
+pyvista==0.44.2
+pyvistaqt==0.11.2
+shapely

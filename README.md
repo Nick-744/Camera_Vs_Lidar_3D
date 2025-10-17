@@ -3,7 +3,7 @@
 
 ---
 
-This project [`my_project_4`] implements the tasks outlined in the provided assignment, focused on Computer Graphics, 2D images, and 3D point clouds.
+This project [`my_project_4`](my_project_4/) implements the tasks outlined in the provided assignment, focused on Computer Graphics, 2D images, and 3D point clouds.
 
 ## Overview
 
@@ -100,4 +100,4 @@ my_project_4/
 
 ## 🔸 Extras:
 
-This repo also includes complete answers to all lab exercises from the semester [Lab1 -> Lab7].
+This repo also includes complete answers to all lab exercises from the semester [Lab1 -> Lab7](Labs/).
